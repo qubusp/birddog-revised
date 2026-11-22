@@ -10,7 +10,6 @@ import mwparserfromhell
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from birddog.abstract_database import InvalidRecordId
-from birddog.database import Database
 from birddog.wiki import (
     API_URL,
     archive_label_priority,
@@ -1111,6 +1110,9 @@ class DatabaseUpdater:
         if not self._db and self._runtime:
             self._db = self._runtime.database
         else:
+            # imported here: loading the NocoDB backend needs its config, which
+            # the Postgres pipeline (birddog/pipeline.py) doesn't have
+            from birddog.database import Database
             self._db = Database()
 
     # -------------------------------------------------------------------------
