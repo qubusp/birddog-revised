@@ -76,7 +76,9 @@ function format_date(mod_date, strip_time=false) {
         const result = mod_date.slice(0, -1).replace('T', ' ');
         if (strip_time)
             return result.slice(0, 10);
-        return result.replace(/ 00:00:00$/, '');
+        // date-only (midnight) values stay bare; anything with a time is UTC
+        const trimmed = result.replace(/ 00:00:00$/, '');
+        return trimmed.length > 10 ? `${trimmed} UTC` : trimmed;
     }
     // legacy "YYYY,MM,DD,HH:MM"
     const parsed = mod_date.split(',');
@@ -84,7 +86,7 @@ function format_date(mod_date, strip_time=false) {
         return mod_date;
     let result = `${parsed[2]} ${months[Number(parsed[1])-1]} ${parsed[0]}`;
     if (parsed.length > 3 && !strip_time)
-         result += ` ${parsed[3]}`;
+         result += ` ${parsed[3]} UTC`;
     return result;
 }
 
@@ -118,6 +120,59 @@ function show_tab(tab_id) {
     tab.show();
 }
 
+// non-blocking replacement for alert(): a Bootstrap toast in #toast-container.
+// kind is a Bootstrap contextual color ('danger', 'info', ...). message is
+// set via textContent, never parsed as HTML.
+function notify(message, kind='danger') {
+    console.log(`notify (${kind}): ${message}`);
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast_el = document.createElement('div');
+    toast_el.className = `toast align-items-center text-bg-${kind} border-0`;
+    toast_el.setAttribute('role', kind === 'danger' ? 'alert' : 'status');
+    toast_el.setAttribute('aria-atomic', 'true');
+    const close_class = kind === 'danger' ? 'btn-close btn-close-white' : 'btn-close';
+    toast_el.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body"></div>
+          <button type="button" class="${close_class} me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>`;
+    toast_el.querySelector('.toast-body').textContent = message;
+    container.appendChild(toast_el);
+    toast_el.addEventListener('hidden.bs.toast', () => toast_el.remove());
+    bootstrap.Toast.getOrCreateInstance(toast_el, { delay: kind === 'danger' ? 8000 : 5000 }).show();
+}
+
+// a 404 from an authenticated endpoint means the session is gone -- tell the
+// user, then reload (after a beat, so the toast is actually readable)
+function notify_session_expired() {
+    notify('Your session may have expired. Please log in again.');
+    setTimeout(() => location.reload(), 2000);
+}
+
+// non-blocking replacement for confirm(): shows #confirmModal and resolves
+// true on OK, false on Cancel / close / Escape
+function confirm_dialog(message) {
+    return new Promise(resolve => {
+        const modal_el = document.getElementById('confirmModal');
+        if (!modal_el) {
+            resolve(confirm(message));
+            return;
+        }
+        document.getElementById('confirmModalBody').textContent = message;
+        const ok_btn = document.getElementById('confirmModalOk');
+        const modal = bootstrap.Modal.getOrCreateInstance(modal_el);
+        let confirmed = false;
+        const on_ok = () => { confirmed = true; modal.hide(); };
+        ok_btn.addEventListener('click', on_ok);
+        modal_el.addEventListener('hidden.bs.modal', () => {
+            ok_btn.removeEventListener('click', on_ok);
+            resolve(confirmed);
+        }, { once: true });
+        modal.show();
+    });
+}
+
 const _TRANSLATE_POLL_INTERVAL_MS = 1000;
 const _TRANSLATE_NO_PROGRESS_TIMEOUT_MS = 15 * 1000; // give up if progress stalls for 15s
 let _translate_last_progress = null;
@@ -130,7 +185,7 @@ async function update_translation_progress(data) {
     hide('translating-badge');
 
     if (!data.available) {
-        alert("Translation service is temporarily unavailable. Please try again later.");
+        notify("Translation service is temporarily unavailable. Please try again later.");
         load_page_by_title(current_page.title, compare=current_page.refmod ?? null);
         return;
     }
@@ -170,7 +225,7 @@ async function update_translation_progress(data) {
             hide('progress-container');
             hide('translating-badge');
             enable_if("translate-btn", true);
-            const reload = confirm(
+            const reload = await confirm_dialog(
                 "Translation seems to be taking longer than expected and may be stuck.\n\n" +
                 "Click OK to reload the page (translation may already be complete), " +
                 "or Cancel to leave the page as-is."
@@ -188,8 +243,7 @@ async function update_translation_progress(data) {
                 const response = await fetch('/translate');
                 if (!response.ok) {
                     if (response.status === 404) {
-                        alert('Your session may have expired. Please log in again.');
-                        location.reload();
+                        notify_session_expired();
                         return;
                     }
                     throw new Error(`Polling failed: ${response.statusText}`);
@@ -401,8 +455,7 @@ async function load_page_by_title(page_title, compare=null) {
             hide('browse-spinner');
             show('browse-page-content');
             if (response.status === 404) {
-                alert('Your session may have expired. Please log in again.');
-                location.reload();
+                notify_session_expired();
                 return;
             }
             throw new Error(`HTTP error! Status: ${response.status}`);
@@ -415,7 +468,7 @@ async function load_page_by_title(page_title, compare=null) {
         current_page = data;
 
         // Process and display the data
-        render_page_data(data);
+        await render_page_data(data);
 
         // Populate the history dropdown
         render_history(data)
@@ -428,7 +481,7 @@ async function load_page_by_title(page_title, compare=null) {
         show('browse-page-content');
     } catch (error) {
         console.error('Error loading page:', error.message);
-        alert(`Failed to load data: ${error.message}`);
+        notify(`Failed to load data: ${error.message}`);
     }
 }
 
@@ -440,8 +493,7 @@ async function translate_page() {
     const response = await fetch(`/translate?title=${page_title}`);
     if (!response.ok) {
         if (response.status === 404) {
-            alert('Your session may have expired. Please log in again.');
-            location.reload();
+            notify_session_expired();
             return;
         }
         throw new Error(`Failed during translation progress check: ${response.statusText}`);
@@ -472,8 +524,7 @@ async function do_database_update(deep=false, update_locations=false) {
     const response = await fetch(`/database_update?title=${page_title}&deep=${deep}&update_locations=${update_locations}`);
     if (!response.ok) {
         if (response.status === 404) {
-            alert('Your session may have expired. Please log in again.');
-            location.reload();
+            notify_session_expired();
             return;
         }
         throw new Error(`Failed during database update request: ${response.statusText}`);
@@ -502,7 +553,7 @@ function render_export_column_assignments(table_name, column_classes, column_hea
     div.className = "mb-3";
     div.innerHTML = `
       <label class="form-label">Export Column: ${column_class}</label>
-      <input class="form-control tag-input" id="${column_id}" placeholder="Select source columns...">
+      <input class="form-control tag-input" id="${column_id}" placeholder="Select source columns…">
     `;
     column_container.appendChild(div);
   });
@@ -549,8 +600,7 @@ async function open_export_modal() {
     const response = await fetch(`/export?title=${encodeURIComponent(page_title)}`);
     if (!response.ok) {
       if (response.status === 404) {
-        alert('Your session may have expired. Please log in again.');
-        location.reload();
+        notify_session_expired();
         return;
       }
       throw new Error(`Failed to load export config: ${response.status}`);
@@ -637,7 +687,7 @@ async function open_export_modal() {
 
   } catch (err) {
     console.error("Failed to open export modal:", err);
-    alert("Unable to load export configuration.");
+    notify("Unable to load export configuration.");
   }
 }
 
@@ -696,16 +746,16 @@ function render_table(table_element, table_data, is_comparison) {
                 case 'added':
                     //console.log('link added:', cell_content);
                     cell_content =
-                        `<button class="btn btn-success btn-sm" style="opacity: 0.5;">
-                            <i class="bi bi-link-45deg"></i>
+                        `<button type="button" class="btn btn-success btn-sm" style="opacity: 0.5;" tabindex="-1" aria-label="Link added">
+                            <i class="bi bi-link-45deg" aria-hidden="true"></i>
                         </button> &nbsp;` + cell_content;
                     row_edited = true;
                     break;
                 case 'changed':
                     //console.log('link changed:', cell_content);
                     cell_content =
-                        `<button class="btn btn-warning btn-sm" style="opacity: 0.5;">
-                            <i class="bi bi-link-45deg"></i>
+                        `<button type="button" class="btn btn-warning btn-sm" style="opacity: 0.5;" tabindex="-1" aria-label="Link changed">
+                            <i class="bi bi-link-45deg" aria-hidden="true"></i>
                         </button> &nbsp;` + cell_content;
                     row_edited = true;
                     break;
@@ -721,10 +771,19 @@ function render_table(table_element, table_data, is_comparison) {
         if (!is_comparison || row_edited) {
             // only add the row if not doing comparison or there is a change to show
             if (is_linked(child[0])) {
-                // Add click event listener
+                // Add click event listener; Enter/Space do the same for keyboard users
+                row_elem.tabIndex = 0;
+                row_elem.setAttribute('role', 'link');
                 row_elem.addEventListener('click', () => on_row_click(table_data, index));
+                row_elem.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        if (event.key === ' ') event.preventDefault();  // don't scroll the page
+                        on_row_click(table_data, index);
+                    }
+                });
             }
             else {
+                row_elem.setAttribute('aria-disabled', 'true');
                 row_elem.classList.add('table-secondary', 'disabled');
                 row_elem.style.pointerEvents = 'none';
                 row_elem.style.opacity = '0.4'; // Dim for better visibility
@@ -738,7 +797,7 @@ function render_table(table_element, table_data, is_comparison) {
 }
 
 // render a data page
-function render_page_data(data) {
+async function render_page_data(data) {
     const false_comparison = 'refmod' in data && data.refmod >= data.lastmod
     // a comparison happened whenever compare() was invoked at all (refmod is
     // set) -- NOT only when the reference turns out to differ from lastmod.
@@ -751,7 +810,7 @@ function render_page_data(data) {
 
     if (resolve_enable && data.lastmod == "") {
         // not an actual update - offer to simply resolve it
-        if (confirm("This page no longer exists. It is safe to clear this page's unresolved status. Click OK to clear it.")) {
+        if (await confirm_dialog("This page no longer exists. It is safe to clear this page's unresolved status. Click OK to clear it.")) {
             resolve_page_update(watch_title_for_page(data), data.title, deep=false);
             data.refmod = null;
             is_comparison = false;
@@ -763,7 +822,7 @@ function render_page_data(data) {
         const resolve_info = get_resolve_info(data.title);
         if (resolve_info && resolve_info.last_resolved > data.lastmod) {
             // not an actual update - offer to simply resolve it
-            if (confirm("The latest modification of this page precedes the comparison date due to a false change detection. It is safe to clear this page's unresolved status. Click OK to clear it.")) {
+            if (await confirm_dialog("The latest modification of this page precedes the comparison date due to a false change detection. It is safe to clear this page's unresolved status. Click OK to clear it.")) {
                 resolve_page_update(watch_title_for_page(data), data.title, deep=false);
                 data.refmod = null;
                 is_comparison = false;
@@ -875,7 +934,7 @@ function render_page_data(data) {
             section.innerHTML = `
               <div class="d-flex align-items-center mb-2">
                 <button class="btn btn-link d-flex align-items-center" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="${is_first}" aria-controls="${collapseId}">
-                  <i class="bi ${is_first ? open_icon : closed_icon} me-2" id="icon-${i}"></i>
+                  <i class="bi ${is_first ? open_icon : closed_icon} me-2" id="icon-${i}" aria-hidden="true"></i>
                   ${table_data.name}
                 </button>
               </div>
@@ -1002,7 +1061,7 @@ function render_breadcrumbs(data) {
         li.classList.add('breadcrumb-item');
 
         const content = level.title === ROOT_HUB_TITLE
-            ? '<i class="bi bi-house-fill"></i>'
+            ? '<i class="bi bi-house-fill" aria-hidden="true"></i><span class="visually-hidden">Archive home</span>'
             : level.label;
 
         if (index === levels.length - 1) {
@@ -1015,6 +1074,8 @@ function render_breadcrumbs(data) {
             const link = document.createElement('a');
             link.href = '#'; // Optional: Use an actual URL if needed
             link.innerHTML = content;
+            if (level.title === ROOT_HUB_TITLE)
+                link.setAttribute('aria-label', 'Archive home');
             link.addEventListener('click', (event) => {
                 event.preventDefault();
                 load_page_by_title(level.title);
@@ -1063,8 +1124,7 @@ async function populate_archive_select() {
             const response = await fetch('/archives');
             if (!response.ok) {
                 if (response.status === 404) {
-                    alert('Your session may have expired. Please log in again.');
-                    location.reload();
+                    notify_session_expired();
                     return null;
                 }
                 throw new Error(`Failed to fetch archives: ${response.statusText}`);
@@ -1073,13 +1133,13 @@ async function populate_archive_select() {
             return await response.json();
         } catch (error) {
             console.error('Error fetching archives:', error);
-            alert('Failed to load archives. Please try again.');
+            notify('Failed to load archives. Please try again.');
             return null;
         }
     }
 
     function populate_archive_select_dropdown(archive_list) {
-        archive_select.innerHTML = '<option value="-1" selected>Select an archive...</option>';
+        archive_select.innerHTML = '<option value="-1" selected>Select an archive…</option>';
         archive_list.forEach((archive, index) => {
             const option = document.createElement('option');
             option.value = index;
@@ -1098,7 +1158,7 @@ async function populate_archive_select() {
     confirm_selection_btn.onclick = () => {
         const archive_index = parseInt(archive_select.value, 10);
         if (isNaN(archive_index) || archive_index < 0 || archive_index >= archives.length) {
-            alert('Please select an archive.');
+            notify('Please select an archive.');
             return;
         }
         const selected_archive = archives[archive_index];
@@ -1122,24 +1182,24 @@ function render_archives_table() {
         const label = archive.label;
         const description = archive.description || '';
         const label_cell = can_edit
-            ? `<input type="text" class="form-control form-control-sm" data-original="${escape_attr(label)}" value="${escape_attr(label)}" onclick="event.stopPropagation()" oninput="update_archive_save_state(this)">`
+            ? `<input type="text" class="form-control form-control-sm" aria-label="Label for ${escape_attr(archive.title)}" data-original="${escape_attr(label)}" value="${escape_attr(label)}" onclick="event.stopPropagation()" oninput="update_archive_save_state(this)">`
             : escape_attr(label);
         const description_cell = can_edit
-            ? `<input type="text" class="form-control form-control-sm" data-original="${escape_attr(description)}" value="${escape_attr(description)}" onclick="event.stopPropagation()" oninput="update_archive_save_state(this)">`
+            ? `<input type="text" class="form-control form-control-sm" aria-label="Description for ${escape_attr(archive.title)}" data-original="${escape_attr(description)}" value="${escape_attr(description)}" onclick="event.stopPropagation()" oninput="update_archive_save_state(this)">`
             : escape_attr(description);
         const save_cell = can_edit
-            ? `<button class="btn btn-primary btn-sm" title="Save Changes" onclick="event.stopPropagation(); save_archive_row(this)" disabled>
-                   <i class="bi bi-arrow-up-square"></i>
+            ? `<button class="btn btn-primary btn-sm" title="Save Changes" aria-label="Save changes to ${escape_attr(archive.title)}" onclick="event.stopPropagation(); save_archive_row(this)" disabled>
+                   <i class="bi bi-arrow-up-square" aria-hidden="true"></i>
                </button>`
             : '';
         const row = `
-            <tr data-title="${escape_attr(archive.title)}" style="cursor: pointer;" onclick="open_archive_row(this)">
+            <tr data-title="${escape_attr(archive.title)}" style="cursor: pointer;" tabindex="0" onclick="open_archive_row(this)" onkeydown="on_archive_row_keydown(event, this)">
                 <td style="word-break: break-word;">${escape_attr(archive.title)}</td>
                 <td style="word-break: break-word;">${label_cell}</td>
                 <td style="word-break: break-word;">${description_cell}</td>
                 <td>
-                    <a href="${escape_attr(archive.url)}" target="birddog_archive_source" class="btn btn-primary btn-sm" title="View Source" onclick="event.stopPropagation()">
-                        <i class="bi bi-box-arrow-up-right"></i>
+                    <a href="${escape_attr(archive.url)}" target="birddog_archive_source" class="btn btn-primary btn-sm" title="View Source" aria-label="View source" onclick="event.stopPropagation()">
+                        <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
                     </a>
                 </td>
                 <td>${save_cell}</td>
@@ -1153,6 +1213,15 @@ function open_archive_row(row) {
     const title = row.dataset.title;
     load_page_by_title(title);
     show_tab('nav-browse-tab');
+}
+
+// Enter on a focused archive row opens it, like a click -- but not when the
+// key comes from the row's own inputs/buttons/links
+function on_archive_row_keydown(event, row) {
+    if (event.key !== 'Enter' || event.target !== row)
+        return;
+    event.preventDefault();
+    open_archive_row(row);
 }
 
 function update_archive_save_state(input) {
@@ -1191,7 +1260,7 @@ async function save_archive_row(button) {
         button.disabled = true;
     } catch (error) {
         console.error('Error saving archive metadata:', error);
-        alert(`Failed to save archive details: ${error.message}`);
+        notify(`Failed to save archive details: ${error.message}`);
     }
 }
 
@@ -1201,8 +1270,7 @@ async function save_archive_row(button) {
 async function load_watchlist(check_all=false, initial_load=false) {
     const response = await fetch('/watchlist');
     if (response.status === 404) {
-        alert('Your session may have expired. Please log in again.');
-        location.reload();
+        notify_session_expired();
         return;
     }
     const data = await response.json();
@@ -1243,13 +1311,13 @@ function render_watchlist() {
                 <td>${format_date(item.last_checked_date)}</td>
                 <td>${format_date(item.cutoff_date)}</td>
                 <td>
-                    <button class="btn btn-primary check-watchlist-btn" title="Check for Updates">
-                        <i class="bi bi-arrow-clockwise"></i>
+                    <button class="btn btn-primary check-watchlist-btn" title="Check for Updates" aria-label="Check ${escape_attr(item.label)} for updates">
+                        <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
                     </button>
                 </td>
                 <td>
-                    <button class="btn btn-primary remove-watchlist-btn" title="Remove from Watchlist">
-                        <i class="bi bi-x-square"></i>
+                    <button class="btn btn-primary remove-watchlist-btn" title="Remove from Watchlist" aria-label="Remove ${escape_attr(item.label)} from watchlist">
+                        <i class="bi bi-x-square" aria-hidden="true"></i>
                     </button>
                 </td>
             </tr>
@@ -1282,13 +1350,12 @@ async function check_watchlist(title, quiet=false, render=true) {
         if (response.status === 404) {
             if (!find_archive(title)) {
                 // the specified archive doesn't exists
-                alert(`The archive ${title} is unrecognized. Please remove it from your watchlist.`);
+                notify(`The archive ${title} is unrecognized. Please remove it from your watchlist.`);
                 show('unresolved-updates-container');
                 hide('unresolved-updates-loading-spinner');
                 return;
             }
-            alert('Your session may have expired. Please log in again.');
-            location.reload();
+            notify_session_expired();
             return;
         }
 
@@ -1309,7 +1376,7 @@ async function check_watchlist(title, quiet=false, render=true) {
             render_unresolved_items();
         }
         if (!quiet && data.unresolved.length == 0)
-            alert(`No new updates for ${title}.`);
+            notify(`No new updates for ${title}.`, 'info');
         watchlist = data.watchlist;
         render_watchlist();
     } catch (error) {
@@ -1318,7 +1385,7 @@ async function check_watchlist(title, quiet=false, render=true) {
         hide('unresolved-updates-loading-spinner');
         console.error('Error checking updates:', error);
         if (!quiet)
-            alert('Failed to check updates.');
+            notify('Failed to check updates.');
     }
 }
 
@@ -1343,7 +1410,7 @@ async function check_all_watchlists() {
 // Populate the archive select dropdown
 async function populate_watchlist_archive_select(archives) {
     const archive_select = document.getElementById('watchlistArchiveSelect');
-    archive_select.innerHTML = '<option value="" selected>Select an archive...</option>';
+    archive_select.innerHTML = '<option value="" selected>Select an archive…</option>';
 
     try {
         // the hub page itself is a valid, if narrow, watch target (it only
@@ -1364,7 +1431,7 @@ async function populate_watchlist_archive_select(archives) {
         });
     } catch (error) {
         console.error('Error fetching archives:', error);
-        alert('Failed to load archives.');
+        notify('Failed to load archives.');
     }
 }
 
@@ -1375,7 +1442,7 @@ async function confirm_add_to_watchlist() {
     const cutoff_date = cutoff_input ? `${cutoff_input}T00:00:00Z` : '';
     console.log(title, cutoff_date);
     if (!title || !cutoff_date) {
-        alert('All fields are required.');
+        notify('All fields are required.');
         return;
     }
 
@@ -1397,8 +1464,7 @@ async function confirm_add_to_watchlist() {
     });
 
     if (response.status === 404) {
-        alert('Your session may have expired. Please log in again.');
-        location.reload();
+        notify_session_expired();
         return;
     }
 
@@ -1455,8 +1521,7 @@ async function resolve_page_update(title, item_title, deep=false, label=null) {
         const response = await fetch(`/resolve?${params.toString()}`);
         if (!response.ok) {
             if (response.status === 404) {
-                alert('Your session may have expired. Please log in again.');
-                location.reload();
+                notify_session_expired();
                 return;
             }
             throw new Error(`Failed to resolve: ${response.statusText}`);
@@ -1478,7 +1543,7 @@ async function resolve_page_update(title, item_title, deep=false, label=null) {
         }
     } catch (error) {
         console.error('Error during resolve:', error);
-        alert('Failed to resolve.');
+        notify('Failed to resolve.');
     }
 }
 
@@ -1538,7 +1603,7 @@ function render_recently_resolved() {
                 <li class="list-group-item d-flex align-items-center gap-2 flex-wrap" data-action-id="${action.id}">
                   ${action_html}
                   <span class="text-warning small">
-                    <i class="bi bi-exclamation-triangle"></i>
+                    <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
                     ${action.restored_count} of ${action.items.length} restored &mdash; ${remaining} changed since
                   </span>
                   <button type="button" class="btn btn-sm btn-link text-decoration-none dismiss-activity-btn" data-action-id="${action.id}">Dismiss</button>
@@ -1548,7 +1613,7 @@ function render_recently_resolved() {
             <li class="list-group-item d-flex align-items-center gap-2 flex-wrap" data-action-id="${action.id}">
               ${action_html}
               <button type="button" class="btn btn-sm btn-outline-secondary undo-resolve-btn" data-action-id="${action.id}">
-                <i class="bi bi-arrow-counterclockwise"></i> Undo
+                <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Undo
               </button>
             </li>`;
     }).join('');
@@ -1634,7 +1699,7 @@ async function undo_resolved_action(action_id, btn) {
         }
     } catch (error) {
         console.error('Error during undo:', error);
-        alert('Failed to undo.');
+        notify('Failed to undo.');
     } finally {
         // every non-error path above ends by calling dismiss_recently_resolved()
         // or render_recently_resolved(), which rebuild the list's innerHTML and
@@ -1714,8 +1779,9 @@ function group_header_html(watch_title, counts) {
                 type="button"
                 class="btn btn-sm btn-link text-decoration-none text-start p-0 w-100 d-flex align-items-center gap-2 group-toggle-btn"
                 data-watch-title="${escape_attr(watch_title)}"
+                aria-expanded="${!collapsed}"
             >
-              <i class="bi ${collapsed ? 'bi-chevron-right' : 'bi-chevron-down'}"></i>
+              <i class="bi ${collapsed ? 'bi-chevron-right' : 'bi-chevron-down'}" aria-hidden="true"></i>
               <strong>${escape_attr(label_for_watch_title(watch_title))}</strong>
               <span class="text-muted small">${escape_attr(summary_parts.join(' · '))}</span>
             </button>
@@ -1725,9 +1791,10 @@ function group_header_html(watch_title, counts) {
                 type="button"
                 class="btn btn-sm btn-outline-secondary alert-subtree-select-btn"
                 title="Select all of ${escape_attr(label_for_watch_title(watch_title))}"
+                aria-label="Select all of ${escape_attr(label_for_watch_title(watch_title))}"
                 data-select-prefix="${escape_attr(watch_title)}"
             >
-              <i class="bi bi-check2-square"></i>
+              <i class="bi bi-check2-square" aria-hidden="true"></i>
             </button>
           </td>
         </tr>
@@ -1815,15 +1882,16 @@ function alert_row_html(row) {
                type="button"
                class="btn btn-sm btn-link px-1 py-0 ms-1 alert-subtree-select-btn"
                title="Select this and everything under ${escape_attr(parent_path)}"
+               aria-label="Select this and everything under ${escape_attr(parent_path)}"
                data-select-prefix="${escape_attr(parent_path)}"
            >
-             <i class="bi bi-diagram-3"></i>
+             <i class="bi bi-diagram-3" aria-hidden="true"></i>
            </button>`
         : '';
 
     return `
         <tr class="${checked ? 'table-active' : ''}" data-path="${escape_attr(path)}" data-modified="${escape_attr(modified)}" data-last-resolved="${escape_attr(last_resolved)}">
-          <td class="select-col"><input type="checkbox" class="form-check-input row-select-checkbox" data-path="${escape_attr(path)}" ${checked ? 'checked' : ''}></td>
+          <td class="select-col"><input type="checkbox" class="form-check-input row-select-checkbox" aria-label="Select ${escape_attr(full_label)}" data-path="${escape_attr(path)}" ${checked ? 'checked' : ''}></td>
           <td>${label_html}${badges}${subtree_btn}</td>
           <td>${modified ? format_date(modified, false) : ''}</td>
           <td>${escape_attr(meta.user || '')}</td>
@@ -1833,11 +1901,12 @@ function alert_row_html(row) {
             <button
                 class="btn btn-sm btn-primary mark-resolved-btn"
                 title="Mark Resolved"
+                aria-label="Mark ${escape_attr(full_label)} resolved"
                 data-watch-title="${escape_attr(watch_title)}"
                 data-path="${escape_attr(path)}"
                 data-label="${escape_attr(full_label)}"
             >
-              <i class="bi bi-check-square"></i>
+              <i class="bi bi-check-square" aria-hidden="true"></i>
             </button>
           </td>
         </tr>
@@ -2040,8 +2109,7 @@ async function resolve_selected() {
         });
         if (!response.ok) {
             if (response.status === 404) {
-                alert('Your session may have expired. Please log in again.');
-                location.reload();
+                notify_session_expired();
                 return;
             }
             throw new Error(`Failed to resolve: ${response.statusText}`);
@@ -2066,7 +2134,7 @@ async function resolve_selected() {
         render_unresolved_items();
     } catch (error) {
         console.error('Error during batch resolve:', error);
-        alert('Failed to resolve selected items.');
+        notify('Failed to resolve selected items.');
     } finally {
         set_bulk_resolve_busy(false);
     }
@@ -2115,9 +2183,12 @@ async function on_loaded() {
     document.getElementById('toggleLoginPassword')?.addEventListener('click', () => {
         const input = document.getElementById('loginPassword');
         const icon = document.getElementById('toggleLoginPasswordIcon');
+        const btn = document.getElementById('toggleLoginPassword');
         const showing = input.type === 'text';
         input.type = showing ? 'password' : 'text';
         icon.className = showing ? 'bi bi-eye' : 'bi bi-eye-slash';
+        btn.setAttribute('aria-pressed', String(!showing));
+        btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
     });
 
     // signup form submit button
@@ -2160,8 +2231,8 @@ async function on_loaded() {
                 body: JSON.stringify({ email })
             });
             const data = await response.json();
-            alert(data.message);
-            window.location.reload();  // Refresh page
+            notify(data.message, 'info');
+            setTimeout(() => window.location.reload(), 2000);  // Refresh page (after the toast is readable)
         });
     }
 
@@ -2178,7 +2249,6 @@ async function on_loaded() {
             const version = event.target.value;
             console.log(`Comparing to: ${version}`);
             load_page_by_title(current_page.title, compare=version);
-            //alert(`Comparing to version ${selectedVersion}`)
         });
 
         // ------------------ TABLE BODY CLICK HANDLER ------------------
@@ -2425,8 +2495,7 @@ async function on_loaded() {
 
           function handle_error_response(response) {
             if (response.status === 404) {
-              alert('Your session may have expired. Please log in again.');
-              location.reload();
+              notify_session_expired();
               return true; // handled
             }
             return false; // not handled; caller should throw
@@ -2514,7 +2583,7 @@ async function on_loaded() {
 
             } catch (error) {
               console.error("Export error:", error);
-              alert("Export failed: " + error.message);
+              notify("Export failed: " + error.message);
             } finally {
               // Restore UI
               hide('browse-spinner');
@@ -2524,7 +2593,9 @@ async function on_loaded() {
         });
 
         // constrain range for watchlist cutoff date
-        const today = new Date().toISOString().split('T')[0];
+        // local calendar date (toISOString() is UTC and can be a day off)
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const input = document.getElementById('watchlistCutoffDate');
         input.max = today;  // only allow up to today
         input.min = "2000-01-01";  // hard-coded example start date

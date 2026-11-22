@@ -14,7 +14,7 @@
     <form method="get" class="mb-4">
       <!-- Time range selector -->
       <label for="range" class="form-label">Select time range:</label>
-      <select id="range" name="range" class="form-select w-auto d-inline" onchange="this.form.submit()">
+      <select id="range" name="range" class="form-select w-auto d-inline">
         <option value="5m" {{ 'selected' if selected_range == '5m' else '' }}>Last 5 Minutes</option>
         <option value="1h" {{ 'selected' if selected_range == '1h' else '' }}>Last Hour</option>
         <option value="4h" {{ 'selected' if selected_range == '4h' else '' }}>Last 4 Hours</option>
@@ -32,10 +32,11 @@
           name="by_resource"
           value="1"
           {{ 'checked' if by_resource|int == 1 else '' }}
-          onchange="this.form.submit()"
         >
         <label class="form-check-label" for="by_resource">Summarize By Resource</label>
       </div>
+
+      <button type="submit" class="btn btn-sm btn-primary ms-2">Apply</button>
 
       <!-- Runtime state -->
       {% if runtime_state == 'running' %}

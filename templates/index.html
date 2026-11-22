@@ -8,7 +8,7 @@
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-  <link href="https://cdn.jsdelivr.net/npm/@yaireo/tagify/dist/tagify.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@yaireo/tagify@4.31.6/dist/tagify.css" rel="stylesheet">
 
   <!-- make active tab obvious -->
   <style>
@@ -21,6 +21,10 @@
   <style>
   body {
     padding-top: 70px; /* Adjust based on navbar height */
+  }
+  /* keep keyboard-focused rows clear of the fixed navbar + sticky browse header */
+  html {
+    scroll-padding-top: 180px;
   }
   </style>
   <!-- roomier breadcrumb: bigger click targets with clear gaps between them (#157) -->
@@ -72,12 +76,13 @@
 
 </head>
 <body>
+<a class="visually-hidden-focusable" href="#main-content">Skip to main content</a>
 
 <!-- nav bar -->
-<nav class="navbar navbar-expand-lg bg-body-tertiary fixed-top" id="nav-brand-tab" role="tablist">
+<nav class="navbar navbar-expand-lg bg-body-tertiary fixed-top" id="nav-brand-tab">
   <div class="container-fluid">
-    <a class="navbar-brand" id="nav-home-logo" data-bs-toggle="tab" href="#nav-home" role="tab">
-      <img src="static/birddog.png" alt="Birddog" width="48" height="48">
+    <a class="navbar-brand" id="nav-home-logo" href="#nav-home" aria-label="Birddog home" onclick="event.preventDefault(); show_tab('nav-home-tab');">
+      <img src="static/birddog.png" alt="" width="48" height="48">
     </a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavAltMarkup" aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
@@ -85,12 +90,17 @@
 
     <div class="collapse navbar-collapse justify-content-between" id="navbarNavAltMarkup">
       <div class="navbar-nav">
-        <a class="nav-link {{ 'active' if landing_tab != 'watchlists' else '' }}" id="nav-home-tab" data-bs-toggle="tab" href="#nav-home" role="tab">Alerts</a>
+        <!-- only the in-page tab links form the tablist; the external links below stay plain links -->
+        <div class="d-flex flex-column flex-lg-row" role="tablist" aria-label="Sections">
+          <a class="nav-link {{ 'active' if landing_tab != 'watchlists' else '' }}" id="nav-home-tab" data-bs-toggle="tab" href="#nav-home" role="tab" aria-controls="nav-home" aria-selected="{{ 'true' if landing_tab != 'watchlists' else 'false' }}">Alerts</a>
+          {% if user %}
+            <a class="nav-link {{ 'active' if landing_tab == 'watchlists' else '' }}" id="nav-watchlists-tab" data-bs-toggle="tab" href="#nav-watchlists" role="tab" aria-controls="nav-watchlists" aria-selected="{{ 'true' if landing_tab == 'watchlists' else 'false' }}">Watchlists</a>
+            <a class="nav-link" id="nav-browse-tab" data-bs-toggle="tab" href="#nav-browse" role="tab" aria-controls="nav-browse" aria-selected="false">Browse</a>
+            <a class="nav-link" id="nav-archives-tab" data-bs-toggle="tab" href="#nav-archives" role="tab" aria-controls="nav-archives" aria-selected="false">Archives</a>
+            <a class="nav-link" id="nav-profile-tab" data-bs-toggle="tab" href="#nav-profile" role="tab" aria-controls="nav-profile" aria-selected="false">Profile</a>
+          {% endif %}
+        </div>
         {% if user %}
-          <a class="nav-link {{ 'active' if landing_tab == 'watchlists' else '' }}" id="nav-watchlists-tab" data-bs-toggle="tab" href="#nav-watchlists" role="tab">Watchlists</a>
-          <a class="nav-link" id="nav-browse-tab" data-bs-toggle="tab" href="#nav-browse" role="tab">Browse</a>
-          <a class="nav-link" id="nav-archives-tab" data-bs-toggle="tab" href="#nav-archives" role="tab">Archives</a>
-          <a class="nav-link" id="nav-profile-tab" data-bs-toggle="tab" href="#nav-profile" role="tab">Profile</a>
           {% if user.role == 'admin' %}
             <a class="nav-link" id="nav-logs-link" href="/logs" target="birddog_logs">Logs</a>
             <a class="nav-link" id="nav-usage-link" href="/service_usage" target="birddog_usage">Usage</a>
@@ -120,6 +130,9 @@
   </div>
 </nav>
 
+<!-- main landmark wraps every tab pane (the tab-content div below only encloses the Alerts pane) -->
+<main id="main-content">
+<h1 class="visually-hidden">Birddog</h1>
 <div class="container px-3 tab-content mt-4">
 
 <!-- Alerts Panel -->
@@ -133,7 +146,7 @@
   <!-- home page spinner -->
   <div id="home-spinner" class="d-none text-center mt-4">
     <div class="spinner-border text-primary" role="status">
-      <span class="visually-hidden">Loading...</span>
+      <span class="visually-hidden">Loading…</span>
     </div>
   </div>
   
@@ -143,46 +156,46 @@
 <div class="card mb-4">
   <div class="card-body">
     <div class="d-flex justify-content-between align-items-center mb-2">
-      <h4 class="mb-0">Your Unresolved Page Changes:</h4>
-      <button class="btn btn-link p-0 text-decoration-none" type="button" data-bs-toggle="collapse" data-bs-target="#unresolved-collapse" aria-expanded="true" aria-controls="unresolved-collapse" onclick="toggle_unresolved_icon(this)">
-        <i class="bi bi-dash-circle-fill fs-3" id="unresolved-icon"></i>
+      <h3 class="h4 mb-0">Your Unresolved Page Changes:</h3>
+      <button class="btn btn-link p-0 text-decoration-none" type="button" data-bs-toggle="collapse" data-bs-target="#unresolved-collapse" aria-expanded="true" aria-controls="unresolved-collapse" aria-label="Collapse unresolved changes" onclick="toggle_unresolved_icon(this)">
+        <i class="bi bi-dash-circle-fill fs-3" id="unresolved-icon" aria-hidden="true"></i>
       </button>
     </div>
     <div class="collapse show" id="unresolved-collapse">
       <div id="unresolved-updates-loading-spinner" class="d-none text-center mt-4">
         <div class="spinner-border text-primary" role="status">
-          <span class="visually-hidden">Loading...</span>
+          <span class="visually-hidden">Loading…</span>
         </div>
       </div>
       <div id="unresolved-updates-container">
         <div class="d-flex align-items-center gap-3 mb-2">
-          <button class="btn btn-primary" title="Check All Updates" onclick="check_all_watchlists();">
-            <i class="bi bi-arrow-clockwise"></i>
+          <button class="btn btn-primary" title="Check All Updates" onclick="check_all_watchlists();" aria-label="Check all watchlists">
+            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
           </button>
           <div class="form-check mb-0">
             <input class="form-check-input" type="checkbox" id="hide-insignificant-toggle" onchange="on_hide_insignificant_toggle(this)">
             <label class="form-check-label" for="hide-insignificant-toggle">Hide minor changes</label>
           </div>
-          <span id="hidden-count-badge" class="text-muted small d-none"></span>
+          <span id="hidden-count-badge" class="text-muted small d-none" aria-live="polite"></span>
         </div>
-        <div id="bulk-resolve-bar" class="alert alert-primary d-none d-flex align-items-center gap-3 py-2 px-3 mb-2" role="alert">
+        <div id="bulk-resolve-bar" class="alert alert-primary d-none d-flex align-items-center gap-3 py-2 px-3 mb-2" role="status">
           <span><strong id="bulk-selected-count">0</strong> selected<span id="bulk-hidden-note" class="text-muted"></span></span>
           <div class="ms-auto d-flex gap-2">
             <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-clear-btn">Clear</button>
             <button type="button" class="btn btn-sm btn-primary" id="bulk-resolve-btn">Resolve Selected</button>
           </div>
         </div>
-        <div style="max-height: 600px; overflow-y: auto;">
+        <div style="max-height: 600px; overflow-y: auto;" tabindex="0" role="region" aria-label="Unresolved changes">
           <table class="table table-striped table-hover">
             <thead>
               <tr>
-                <th class="select-col"><input type="checkbox" class="form-check-input" id="select-all-alerts" title="Select all"></th>
+                <th class="select-col"><input type="checkbox" class="form-check-input" id="select-all-alerts" title="Select all" aria-label="Select all alerts"></th>
                 <th>Label</th>
                 <th>Timestamp</th>
                 <th>User</th>
                 <th>Last Resolved</th>
                 <th>Cutoff</th>
-                <th></th>
+                <th><span class="visually-hidden">Actions</span></th>
               </tr>
             </thead>
             <tbody id="alerts-table-body">
@@ -210,9 +223,9 @@
 <div class="card mb-4 d-none" id="recently-resolved-card">
   <div class="card-body">
     <div class="d-flex justify-content-between align-items-center mb-2">
-      <h4 class="mb-0">Recently Resolved <span class="badge bg-primary" id="recently-resolved-count">0</span></h4>
-      <button class="btn btn-link p-0 text-decoration-none" type="button" data-bs-toggle="collapse" data-bs-target="#recently-resolved-collapse" aria-expanded="true" aria-controls="recently-resolved-collapse" onclick="toggle_recently_resolved_icon(this)">
-        <i class="bi bi-dash-circle-fill fs-3" id="recently-resolved-icon"></i>
+      <h3 class="h4 mb-0">Recently Resolved <span class="badge bg-primary" id="recently-resolved-count">0</span></h3>
+      <button class="btn btn-link p-0 text-decoration-none" type="button" data-bs-toggle="collapse" data-bs-target="#recently-resolved-collapse" aria-expanded="true" aria-controls="recently-resolved-collapse" aria-label="Collapse recently resolved" onclick="toggle_recently_resolved_icon(this)">
+        <i class="bi bi-dash-circle-fill fs-3" id="recently-resolved-icon" aria-hidden="true"></i>
       </button>
     </div>
     <div class="collapse show" id="recently-resolved-collapse">
@@ -249,13 +262,17 @@
     <h3>Login</h3>
     <form id="loginForm">
       <div class="mb-3">
-        <input type="email" class="form-control" id="loginEmail" placeholder="Email" required>
+        <label for="loginEmail" class="form-label">Email</label>
+        <input type="email" class="form-control" id="loginEmail" name="email" autocomplete="email" spellcheck="false" required>
       </div>
-      <div class="mb-3 position-relative">
-        <input type="password" class="form-control pe-5" id="loginPassword" placeholder="Password" required>
-        <span id="toggleLoginPassword" style="position:absolute;top:50%;right:10px;transform:translateY(-50%);cursor:pointer;color:#6c757d;">
-          <i class="bi bi-eye" id="toggleLoginPasswordIcon"></i>
-        </span>
+      <div class="mb-3">
+        <label for="loginPassword" class="form-label">Password</label>
+        <div class="position-relative">
+          <input type="password" class="form-control pe-5" id="loginPassword" name="password" autocomplete="current-password" required>
+          <button type="button" class="btn btn-link p-0" id="toggleLoginPassword" aria-label="Show password" aria-pressed="false" style="position:absolute;top:50%;right:10px;transform:translateY(-50%);color:#6c757d;">
+            <i class="bi bi-eye" id="toggleLoginPasswordIcon" aria-hidden="true"></i>
+          </button>
+        </div>
       </div>
       <button type="submit" class="btn btn-primary">Login</button>
       <div class="mt-2">
@@ -264,7 +281,7 @@
         </button>
       </div>
     </form>
-    <div id="loginError" class="text-danger mt-2"></div>
+    <div id="loginError" class="text-danger mt-2" role="status" aria-live="polite"></div>
   </div>
 
   <!-- Signup Form -->
@@ -272,17 +289,20 @@
     <h3>Create a Profile</h3>
     <form id="signupForm">
       <div class="mb-3">
-        <input type="text" class="form-control" id="signupName" placeholder="Name" required>
+        <label for="signupName" class="form-label">Name</label>
+        <input type="text" class="form-control" id="signupName" name="name" autocomplete="name" required>
       </div>
       <div class="mb-3">
-        <input type="email" class="form-control" id="signupEmail" placeholder="Email" required>
+        <label for="signupEmail" class="form-label">Email</label>
+        <input type="email" class="form-control" id="signupEmail" name="email" autocomplete="email" spellcheck="false" required>
       </div>
       <div class="mb-3">
-        <input type="password" class="form-control" id="signupPassword" placeholder="Password" required>
+        <label for="signupPassword" class="form-label">Password</label>
+        <input type="password" class="form-control" id="signupPassword" name="password" autocomplete="new-password" required>
       </div>
       <button type="submit" class="btn btn-primary">Sign Up</button>
     </form>
-    <div id="signupError" class="text-danger mt-2"></div>
+    <div id="signupError" class="text-danger mt-2" role="status" aria-live="polite"></div>
   </div>
 </div>
 {% endif %}
@@ -298,22 +318,22 @@
 <div class="card mb-4">
   <div class="card-body">
     <div class="d-flex justify-content-between align-items-center mb-2">
-      <h4 class="mb-0">Your Watch List:</h4>
-      <button class="btn btn-link p-0 text-decoration-none" type="button" data-bs-toggle="collapse" data-bs-target="#watchlist-collapse" aria-expanded="true" aria-controls="watchlist-collapse" onclick="toggle_watchlist_icon(this)">
-        <i class="bi bi-dash-circle-fill fs-3" id="watchlist-icon"></i>
+      <h3 class="h4 mb-0">Your Watch List:</h3>
+      <button class="btn btn-link p-0 text-decoration-none" type="button" data-bs-toggle="collapse" data-bs-target="#watchlist-collapse" aria-expanded="true" aria-controls="watchlist-collapse" aria-label="Collapse watch list" onclick="toggle_watchlist_icon(this)">
+        <i class="bi bi-dash-circle-fill fs-3" id="watchlist-icon" aria-hidden="true"></i>
       </button>
     </div>
 
     <div class="collapse show" id="watchlist-collapse">
       <div id="watchlist-loading-spinner" class="d-none text-center mt-4">
         <div class="spinner-border text-primary" role="status">
-          <span class="visually-hidden">Loading...</span>
+          <span class="visually-hidden">Loading…</span>
         </div>
       </div>
       <div id="watchlist-container">
         <div class="d-flex mb-2">
-          <button class="btn btn-primary me-2" title="Add to Watchlist" data-bs-toggle="modal" data-bs-target="#addWatchlistModal">
-            <i class="bi bi-plus-square"></i>
+          <button class="btn btn-primary me-2" title="Add to Watchlist" data-bs-toggle="modal" data-bs-target="#addWatchlistModal" aria-label="Add to watchlist">
+            <i class="bi bi-plus-square" aria-hidden="true"></i>
           </button>
         </div>
         <table class="table table-striped table-hover">
@@ -354,18 +374,18 @@
     <form id="change-password-form">
       <div class="mb-3">
         <label for="currentPassword" class="form-label">Current Password</label>
-        <input type="password" class="form-control" id="currentPassword" required>
+        <input type="password" class="form-control" id="currentPassword" name="current-password" autocomplete="current-password" required>
       </div>
       <div class="mb-3">
         <label for="newPassword" class="form-label">New Password</label>
-        <input type="password" class="form-control" id="newPassword" required>
+        <input type="password" class="form-control" id="newPassword" name="new-password" autocomplete="new-password" required>
       </div>
       <div class="mb-3">
         <label for="confirmPassword" class="form-label">Confirm New Password</label>
-        <input type="password" class="form-control" id="confirmPassword" required>
+        <input type="password" class="form-control" id="confirmPassword" name="confirm-password" autocomplete="new-password" required>
       </div>
       <button type="submit" class="btn btn-primary">Change Password</button>
-      <div id="password-change-message" class="mt-2"></div>
+      <div id="password-change-message" class="mt-2" role="status" aria-live="polite"></div>
     </form>
   </div>
 </div>
@@ -375,7 +395,7 @@
   <!-- browse page spinner -->
   <div id="browse-spinner" class="d-none text-center mt-4">
     <div class="spinner-border text-primary" role="status">
-      <span class="visually-hidden">Loading...</span>
+      <span class="visually-hidden">Loading…</span>
     </div>
   </div>
   <div id="browse-page-content" class="container px-3 mt-4">
@@ -387,8 +407,8 @@
             <div class="row align-items-center g-2">
               <!-- Left Column: Button -->
               <div class="col-auto">
-                <button type="button" id="archive-select-btn" class="btn btn-primary" title="Select Archive" data-bs-toggle="modal" data-bs-target="#archiveSelectModal">
-                  <i class="bi bi-book"></i>
+                <button type="button" id="archive-select-btn" class="btn btn-primary" title="Select Archive" data-bs-toggle="modal" data-bs-target="#archiveSelectModal" aria-label="Select archive">
+                  <i class="bi bi-book" aria-hidden="true"></i>
                 </button>
                 <!--
                 <button type="button" id="archive-watch-btn" class="btn btn-secondary d-none" title="Watch this Archive">
@@ -404,7 +424,7 @@
                   </ol>
                 </nav>
               </div>
-              <div id="browse-info" class="col d-flex flex-wrap justify-content-end gap-2 align-items-center">
+              <div id="browse-info" class="col d-flex flex-wrap justify-content-end gap-2 align-items-center" aria-live="polite">
                 <span id="new-page-badge" class="badge bg-success small d-none">NEW PAGE</span>
                 <span id="translating-badge" class="badge bg-info small d-none">
                   <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
@@ -425,8 +445,9 @@
                       data-bs-target="#page-description-box" 
                       aria-expanded="true" 
                       aria-controls="page-description-box"
+                      aria-label="Collapse page description"
                       onclick="toggle_page_desc_icon(this)">
-                <i class="bi bi-dash-circle-fill fs-3" id="page-desc-icon"></i>
+                <i class="bi bi-dash-circle-fill fs-3" id="page-desc-icon" aria-hidden="true"></i>
               </button>
             </div>
 
@@ -450,7 +471,7 @@
                 </p>
                 <div id="history-selection-box" class="d-flex align-items-center">
                   <div class="text-muted form-check me-2">
-                    <label class="form-check-label" for="compare-checkbox">
+                    <label class="form-check-label" for="version-select">
                       Compare to:
                     </label>
                   </div>
@@ -465,31 +486,31 @@
             <div class="border rounded p-3 shadow-sm">
               <!-- Button Group -->
               <div class="d-flex align-items-center gap-2 mb-3">
-                <a id="source-link" href="#" target="_blank" class="btn btn-primary" title="View Source">
-                  <i class="bi bi-box-arrow-up-right"></i>
+                <a id="source-link" href="#" target="_blank" class="btn btn-primary" title="View Source" aria-label="View source">
+                  <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
                 </a>
-                <button id="translate-btn" class="btn btn-primary" onclick="translate_page()" title="Translate">
-                  <i class="bi bi-translate"></i>
+                <button id="translate-btn" class="btn btn-primary" onclick="translate_page()" title="Translate" aria-label="Translate">
+                  <i class="bi bi-translate" aria-hidden="true"></i>
                 </button>
-                <button id="download-btn" class="btn btn-primary" onclick="open_export_modal()" title="Download Spreadsheet">
-                  <i class="bi bi-download"></i>
+                <button id="download-btn" class="btn btn-primary" onclick="open_export_modal()" title="Download Spreadsheet" aria-label="Download spreadsheet">
+                  <i class="bi bi-download" aria-hidden="true"></i>
                 </button>
-                <button id="resolve-btn" class="btn btn-primary" onclick="resolve_page()" title="Mark Resolved">
-                  <i class="bi bi-check-square"></i>
+                <button id="resolve-btn" class="btn btn-primary" onclick="resolve_page()" title="Mark Resolved" aria-label="Mark resolved">
+                  <i class="bi bi-check-square" aria-hidden="true"></i>
                 </button>
-                <button id="next-unresolved-btn" class="btn btn-primary" onclick="next_unresolved()" title="Next Unresolved">
-                  <i class="bi bi-arrow-right-square"></i>
+                <button id="next-unresolved-btn" class="btn btn-primary" onclick="next_unresolved()" title="Next Unresolved" aria-label="Next unresolved">
+                  <i class="bi bi-arrow-right-square" aria-hidden="true"></i>
                 </button>
                 {% if database_available and user and user.role == 'admin' %}
-                <button id="database-sync" class="btn btn-primary" onclick="update_database()" title="Database Upload">
-                  <i class="bi bi-database-fill-up"></i>
+                <button id="database-sync" class="btn btn-primary" onclick="update_database()" title="Database Upload" aria-label="Database upload">
+                  <i class="bi bi-database-fill-up" aria-hidden="true"></i>
                 </button>
                 {% endif %}
               </div>
 
               <!-- Progress Bar -->
               <div id="progress-container" class="progress d-none" style="height: 20px;">
-                <div id="progress-bar" class="progress-bar" role="progressbar"
+                <div id="progress-bar" class="progress-bar" role="progressbar" aria-label="Progress"
                 style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
               </div>
             </div>
@@ -521,8 +542,8 @@
           <th>Title</th>
           <th>Label</th>
           <th>Description</th>
-          <th></th>
-          <th></th>
+          <th><span class="visually-hidden">Source</span></th>
+          <th><span class="visually-hidden">Save</span></th>
         </tr>
       </thead>
       <tbody id="archives-table-body">
@@ -532,6 +553,7 @@
   </div>
 </div>
 
+</main>
 
 <!-- Archive Selection Modal -->
 <div class="modal fade bd-example-modal-sm" id="archiveSelectModal" tabindex="-1" role="dialog" aria-labelledby="archiveSelectModalLabel" aria-hidden="true">
@@ -546,7 +568,7 @@
         <div class="mb-3">
           <label for="archiveSelect" class="form-label">Choose Archive:</label>
           <select id="archiveSelect" class="form-select">
-            <option value="" selected>Select an archive...</option>
+            <option value="" selected>Select an archive…</option>
             <!-- Options will be populated dynamically -->
           </select>
         </div>
@@ -573,7 +595,7 @@
         <div class="mb-3">
           <label for="watchlistArchiveSelect" class="form-label">Archive Name:</label>
           <select id="watchlistArchiveSelect" class="form-select">
-            <option value="" selected>Select an archive...</option>
+            <option value="" selected>Select an archive…</option>
           </select>
         </div>
 
@@ -602,7 +624,7 @@
       <div class="modal-body">
         <div class="mb-3">
           <label for="resetEmail" class="form-label">Email</label>
-          <input type="email" class="form-control" id="resetEmail" required>
+          <input type="email" class="form-control" id="resetEmail" name="email" autocomplete="email" spellcheck="false" required>
         </div>
       </div>
       <div class="modal-footer">
@@ -706,11 +728,32 @@
   </div>
 </div>
 
+<!-- Generic Confirm Modal (see confirm_dialog() in birddog.js) -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirmModalLabel">Please Confirm</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmModalBody" class="mb-0" style="white-space: pre-line;"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirmModalOk">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast notifications (see notify() in birddog.js) -->
+<div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3" aria-live="polite" aria-atomic="true"></div>
 
 <!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 <!-- Tagify JS -->
-<script src="https://cdn.jsdelivr.net/npm/@yaireo/tagify"></script>
+<script src="https://cdn.jsdelivr.net/npm/@yaireo/tagify@4.31.6"></script>
 
 <!-- Birddog JS -->
 <script>

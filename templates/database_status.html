@@ -16,7 +16,7 @@
     </div>
 
     <div id="status-area">
-      <p class="text-muted">Loading...</p>
+      <p class="text-muted">Loading…</p>
     </div>
   </div>
 
@@ -57,7 +57,7 @@
             <td>${t.completed ?? ''}</td>
             <td>${deep}</td>
             <td>
-              <button class="btn btn-sm btn-danger" data-task="${escapeHtml(name)}" onclick="cancelTask('${name}')">
+              <button class="btn btn-sm btn-danger" data-task="${escapeHtml(name)}" onclick="cancelTask(this.dataset.task)">
                 Cancel
               </button>
             </td>
@@ -73,7 +73,7 @@
               <th>Length</th>
               <th>Completed</th>
               <th>Deep</th>
-              <th></th>
+              <th><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>

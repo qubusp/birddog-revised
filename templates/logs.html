@@ -34,20 +34,20 @@
         <option value="100" selected>100</option>
         <option value="200">200</option>
         <option value="500">500</option>
-        <option value="500">1000</option>
+        <option value="1000">1000</option>
       </select>
       <button class="btn btn-primary" onclick="loadLogs()">
-        <i class="bi bi-arrow-clockwise"></i> Refresh
+        <i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Refresh
       </button>
     </div>
-    <div id="log-container">Loading logs...</div>
+    <div id="log-container">Loading logs…</div>
   </div>
 
   <script>
     async function loadLogs() {
       const limit = document.getElementById('log-limit').value;
       const container = document.getElementById('log-container');
-      container.innerText = 'Loading logs...';
+      container.innerText = 'Loading logs…';
       try {
         const response = await fetch(`/log?limit=${limit}`);
         if (!response.ok) throw new Error(`Status: ${response.status}`);

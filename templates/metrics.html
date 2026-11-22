@@ -14,11 +14,12 @@
     <!-- Time range selector -->
     <form method="get" class="mb-4">
       <label for="range" class="form-label">Select time range:</label>
-      <select id="range" name="range" class="form-select w-auto d-inline" onchange="this.form.submit()">
+      <select id="range" name="range" class="form-select w-auto d-inline">
         <option value="24h" {{ 'selected' if selected_range == '24h' else '' }}>Last 24 Hours</option>
         <option value="7d" {{ 'selected' if selected_range == '7d' else '' }}>Last 7 Days</option>
         <option value="30d" {{ 'selected' if selected_range == '30d' else '' }}>Last 30 Days</option>
       </select>
+      <button type="submit" class="btn btn-sm btn-primary ms-2">Apply</button>
     </form>
 
     <!-- User histogram -->
