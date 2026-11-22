@@ -23,6 +23,8 @@ x-airflow-common: &airflow-common
     AIRFLOW__API_AUTH__JWT_SECRET: ${JWT_SECRET}
     AIRFLOW__API_AUTH__JWT_ISSUER: birddog
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    # public URL behind Caddy (links, redirects after login)
+    AIRFLOW__API__BASE_URL: https://airflow.${PUBLIC_DOMAIN}
     # Birddog's own database, used by the DAGs
     AIRFLOW_CONN_BIRDDOG_PG: postgresql://birddog:${BIRDDOG_DB_PASSWORD}@postgres:5432/birddog
     # the birddog library itself reads this (birddog/pg.py)
@@ -141,7 +143,7 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.production
       SECRET_KEY: ${MATHESAR_SECRET_KEY}
-      ALLOWED_HOSTS: "localhost,127.0.0.1,[::1]"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,[::1],data.${PUBLIC_DOMAIN}"
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       POSTGRES_DB: mathesar
@@ -162,7 +164,26 @@ services:
       postgres:
         condition: service_healthy
 
+  # Public HTTPS for Airflow and Mathesar (the only ports open to the world)
+  caddy:
+    image: caddy:2.11.8
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - airflow-apiserver
+      - mathesar
+
 volumes:
+  caddy-data:
+  caddy-config:
   pg-data:
   airflow-logs:
   birddog-cache:

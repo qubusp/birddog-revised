@@ -1,0 +1,13 @@
+# Public HTTPS entry point. Certificates come from Let's Encrypt automatically.
+# Each app keeps its own login; nothing here adds or bypasses auth.
+# PUBLIC_DOMAIN is the base name, e.g. 204-12-218-112.sslip.io (set in .env).
+
+airflow.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy airflow-apiserver:8080
+}
+
+data.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy mathesar:8000
+}

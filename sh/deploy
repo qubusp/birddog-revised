@@ -34,6 +34,7 @@ ensure MATHESAR_DB_PASSWORD "$(rnd)"
 ensure MATHESAR_SECRET_KEY "$(openssl rand -hex 32)"
 ensure MATHESAR_ADMIN_USER admin
 ensure MATHESAR_ADMIN_PASSWORD "$(openssl rand -hex 12)"
+ensure PUBLIC_DOMAIN 204-12-218-112.sslip.io
 
 docker compose up -d --build
 # Curator UI roles need CREATEROLE, so they're made as postgres (idempotent; on

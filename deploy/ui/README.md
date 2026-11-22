@@ -6,12 +6,10 @@ browsing and editing records.
 
 ## Opening it
 
-It only listens on the server's loopback, so open an SSH tunnel first:
-
-    ssh -N -L 8000:127.0.0.1:8000 administrator@204.12.218.112
-
-then browse to <http://localhost:8000>. Use `localhost` or `127.0.0.1`; other
-host names are rejected by `ALLOWED_HOSTS`.
+<https://data.204-12-218-112.sslip.io>, served over HTTPS by Caddy
+(`deploy/caddy/Caddyfile`) behind Mathesar's own login. The base domain is
+`PUBLIC_DOMAIN` in `deploy/.env`. On the server itself it also answers on
+<http://127.0.0.1:8000>.
 
 ## Admin login
 
@@ -51,7 +49,7 @@ database.
    username and a temporary password. Leave the user as a standard user, not admin.
 2. Open the **Birddog** database, then **Collaborators → Add collaborator**. Pick the
    user and the role **birddog_ui**.
-3. Send the curator the tunnel command and their login. Mathesar asks them to change
+3. Send the curator the URL and their login. Mathesar asks them to change
    the password the first time they log in.
 
 Don't add any other Postgres role to Mathesar. It would bypass the restrictions above.
