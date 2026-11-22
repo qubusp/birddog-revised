@@ -1,0 +1,33 @@
+#!/bin/bash
+# Usage: sh/deploy [user@host]
+# Syncs the repo to the server and (re)builds the stack. Creates deploy/.env with
+# random secrets on the server the first time.
+set -euo pipefail
+
+HOST="${1:-administrator@204.12.218.112}"
+DIR=birddog-revised
+
+rsync -az --delete \
+    --exclude .git --exclude __pycache__ --exclude '*.pyc' \
+    --exclude notebooks --exclude research --exclude deploy/.env \
+    ./ "$HOST:$DIR/"
+
+ssh "$HOST" "cd $DIR/deploy && bash -s" <<'EOF'
+set -euo pipefail
+if [ ! -f .env ]; then
+    rnd() { openssl rand -hex 24; }
+    {
+        echo "POSTGRES_PASSWORD=$(rnd)"
+        echo "AIRFLOW_DB_PASSWORD=$(rnd)"
+        echo "BIRDDOG_DB_PASSWORD=$(rnd)"
+        echo "FERNET_KEY=$(openssl rand -base64 32 | tr '+/' '-_')"
+        echo "JWT_SECRET=$(rnd)"
+        echo "AIRFLOW_ADMIN_USER=admin"
+        echo "AIRFLOW_ADMIN_PASSWORD=$(openssl rand -hex 12)"
+    } > .env
+    chmod 600 .env
+    echo "created deploy/.env"
+fi
+docker compose up -d --build
+docker compose ps --format 'table {{.Service}}\t{{.Status}}'
+EOF
