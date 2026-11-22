@@ -28,12 +28,14 @@ x-airflow-common: &airflow-common
     # the birddog library itself reads this (birddog/pg.py)
     BIRDDOG_DATABASE_URL: postgresql://birddog:${BIRDDOG_DB_PASSWORD}@postgres:5432/birddog
     PYTHONPATH: /opt/birddog
+    RCLONE_CONFIG: /opt/airflow/rclone/rclone.conf
   volumes:
     - ../dags:/opt/airflow/dags
     - ../birddog:/opt/birddog/birddog
     - ../resources:/opt/birddog/resources
     - airflow-logs:/opt/airflow/logs
     - birddog-cache:/opt/birddog/.cache
+    - ./rclone:/opt/airflow/rclone
   # birddog loads resources/*.json relative to the working directory
   working_dir: /opt/birddog
   user: "50000:0"
@@ -49,6 +51,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD}
       BIRDDOG_DB_PASSWORD: ${BIRDDOG_DB_PASSWORD}
+      # read by db/init/02-ui.sh (curator UI roles)
+      BIRDDOG_UI_DB_PASSWORD: ${BIRDDOG_UI_DB_PASSWORD}
+      MATHESAR_DB_PASSWORD: ${MATHESAR_DB_PASSWORD}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -79,7 +84,8 @@ services:
   airflow-init:
     <<: *airflow-common
     entrypoint: /bin/bash
-    command: ["-c", "/entrypoint airflow version"]
+    # wiki_api pool: caps concurrent MediaWiki callers across all DAGs
+    command: ["-c", "/entrypoint airflow version && /entrypoint airflow pools set wiki_api 3 'MediaWiki API callers'"]
     environment:
       <<: *airflow-env
       _AIRFLOW_DB_MIGRATE: "true"
@@ -125,7 +131,39 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
+  # Curator UI: forms and grids over core.* (replaces NocoDB for curators).
+  # Metadata in its own `mathesar` database; it reaches birddog as the
+  # restricted birddog_ui role. Configured by ui/setup.sh -- see ui/README.md.
+  #   ssh -L 8000:127.0.0.1:8000 administrator@<host>   then http://localhost:8000
+  mathesar:
+    image: mathesar/mathesar:0.12.0
+    restart: unless-stopped
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      SECRET_KEY: ${MATHESAR_SECRET_KEY}
+      ALLOWED_HOSTS: "localhost,127.0.0.1,[::1]"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: mathesar
+      POSTGRES_USER: mathesar
+      POSTGRES_PASSWORD: ${MATHESAR_DB_PASSWORD}
+      WEB_CONCURRENCY: "3"
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - mathesar-media:/code/.media
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz/ready/"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pg-data:
   airflow-logs:
   birddog-cache:
+  mathesar-media:

@@ -14,20 +14,34 @@ rsync -az --delete \
 
 ssh "$HOST" "cd $DIR/deploy && bash -s" <<'EOF'
 set -euo pipefail
-if [ ! -f .env ]; then
-    rnd() { openssl rand -hex 24; }
-    {
-        echo "POSTGRES_PASSWORD=$(rnd)"
-        echo "AIRFLOW_DB_PASSWORD=$(rnd)"
-        echo "BIRDDOG_DB_PASSWORD=$(rnd)"
-        echo "FERNET_KEY=$(openssl rand -base64 32 | tr '+/' '-_')"
-        echo "JWT_SECRET=$(rnd)"
-        echo "AIRFLOW_ADMIN_USER=admin"
-        echo "AIRFLOW_ADMIN_PASSWORD=$(openssl rand -hex 12)"
-    } > .env
-    chmod 600 .env
-    echo "created deploy/.env"
-fi
+# Create deploy/.env on first deploy; on later deploys only append keys that
+# are missing (new services), never regenerating existing secrets.
+[ -f .env ] || { touch .env; echo "created deploy/.env"; }
+chmod 600 .env
+rnd() { openssl rand -hex 24; }
+ensure() {  # ensure KEY VALUE
+    grep -q "^$1=" .env || { echo "$1=$2" >> .env; echo "added $1 to deploy/.env"; }
+}
+ensure POSTGRES_PASSWORD "$(rnd)"
+ensure AIRFLOW_DB_PASSWORD "$(rnd)"
+ensure BIRDDOG_DB_PASSWORD "$(rnd)"
+ensure FERNET_KEY "$(openssl rand -base64 32 | tr '+/' '-_')"
+ensure JWT_SECRET "$(rnd)"
+ensure AIRFLOW_ADMIN_USER admin
+ensure AIRFLOW_ADMIN_PASSWORD "$(openssl rand -hex 12)"
+ensure BIRDDOG_UI_DB_PASSWORD "$(rnd)"
+ensure MATHESAR_DB_PASSWORD "$(rnd)"
+ensure MATHESAR_SECRET_KEY "$(openssl rand -hex 32)"
+ensure MATHESAR_ADMIN_USER admin
+ensure MATHESAR_ADMIN_PASSWORD "$(openssl rand -hex 12)"
+
 docker compose up -d --build
+# Curator UI roles need CREATEROLE, so they're made as postgres (idempotent; on
+# a fresh volume initdb already ran this). Then re-apply the migrations so
+# 004_ui_role.sql grants to the now-existing role, and configure Mathesar.
+# (</dev/null: these must not eat the rest of this script from stdin)
+docker compose exec -T postgres bash /docker-entrypoint-initdb.d/02-ui.sh </dev/null
+docker compose run --rm migrate </dev/null
+bash ui/setup.sh </dev/null
 docker compose ps --format 'table {{.Service}}\t{{.Status}}'
 EOF
