@@ -24,7 +24,7 @@ from birddog.utility import (
     )
 from birddog.translate import translate_structure
 from birddog.fetch import fetch_url
-from birddog.store import KeyValueStore
+from birddog.archive_roots import default_store as _default_archive_root_store
 
 from birddog.log import get_logger
 _logger = get_logger()
@@ -116,16 +116,18 @@ def page_url_from_title(title):
 # ARCHIVES/ARCHIVE_BY_TITLE/ARCHIVE_BY_ADDRESS tables (archive+subarchive
 # tuples) are kept as-is; they're still needed to migrate old watchlists.
 
-_ARCHIVE_ROOTS_NAMESPACE = "archive_roots"
-_archive_roots_kv = KeyValueStore()
+_archive_roots_store = None  # lazy: Postgres when configured, else the legacy KV store
 _archive_roots_cache = None  # lazy-loaded dict: title -> label
+
+def _roots_store():
+    global _archive_roots_store
+    if _archive_roots_store is None:
+        _archive_roots_store = _default_archive_root_store()
+    return _archive_roots_store
 
 def _load_archive_roots():
     global _archive_roots_cache
-    _archive_roots_cache = {
-        title: json.loads(value)
-        for title, value in _archive_roots_kv.get_all(_ARCHIVE_ROOTS_NAMESPACE)
-    }
+    _archive_roots_cache = _roots_store().all()
     return _archive_roots_cache
 
 def is_root_title(title):
@@ -154,7 +156,7 @@ def register_archive_root(title, label=None):
             others = {entry["label"] for t, entry in _archive_roots_cache.items() if t != title}
             label = _disambiguate_label(label, others)
         record = {"label": label, "description": ""}
-        _archive_roots_kv.insert(_ARCHIVE_ROOTS_NAMESPACE, title, json.dumps(record))
+        _roots_store().put(title, record)
         _archive_roots_cache[title] = record
     return _archive_roots_cache[title]["label"]
 
@@ -206,7 +208,7 @@ def refresh_curated_archive_root_labels():
         correct_label = _default_archive_root_label(title)
         if entry["label"] != correct_label:
             entry = {**entry, "label": correct_label}
-            _archive_roots_kv.insert(_ARCHIVE_ROOTS_NAMESPACE, title, json.dumps(entry))
+            _roots_store().put(title, entry)
             _archive_roots_cache[title] = entry
             fixed += 1
     return fixed
@@ -237,7 +239,7 @@ def deduplicate_archive_root_labels():
         claimed[new_label] = title
         if new_label != label:
             entry = {**entry, "label": new_label}
-            _archive_roots_kv.insert(_ARCHIVE_ROOTS_NAMESPACE, title, json.dumps(entry))
+            _roots_store().put(title, entry)
             _archive_roots_cache[title] = entry
             fixed += 1
     return fixed
@@ -276,7 +278,7 @@ def update_archive_root(title, label=None, description=None):
     if description is not None:
         updated["description"] = description
     if updated != entry:
-        _archive_roots_kv.insert(_ARCHIVE_ROOTS_NAMESPACE, title, json.dumps(updated))
+        _roots_store().put(title, updated)
         _archive_roots_cache[title] = updated
     return True
 
@@ -295,7 +297,7 @@ def remove_archive_root(title):
         _load_archive_roots()
     if title not in _archive_roots_cache:
         return False
-    _archive_roots_kv.remove_if_exists(_ARCHIVE_ROOTS_NAMESPACE, title)
+    _roots_store().remove(title)
     del _archive_roots_cache[title]
     return True
 

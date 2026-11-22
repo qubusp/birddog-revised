@@ -8,6 +8,7 @@ from unittest.mock import patch, MagicMock
 import mwparserfromhell
 
 from birddog.store import SQLiteKeyValueStore
+from birddog.archive_roots import KVArchiveRootStore
 
 from birddog.wiki import (
     ARCHIVE_BASE,
@@ -1467,7 +1468,7 @@ class TestDynamicArchiveRootRegistry(unittest.TestCase):
     doesn't depend on real archive data, and stays idempotent across runs
     (register_archive_root never overwrites an already-known title). Uses a
     throwaway, temp-file-backed KV store swapped in for
-    birddog.wiki._archive_roots_kv for the duration of each test, so this
+    birddog.wiki._archive_roots_store for the duration of each test, so this
     class never reads or writes the real local/production archive-roots
     store."""
 
@@ -1476,16 +1477,16 @@ class TestDynamicArchiveRootRegistry(unittest.TestCase):
     def setUp(self):
         import birddog.wiki as wiki_mod
         self._wiki_mod = wiki_mod
-        self._orig_kv = wiki_mod._archive_roots_kv
+        self._orig_store = wiki_mod._archive_roots_store
         self._orig_cache = wiki_mod._archive_roots_cache
         self._tmp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         self._tmp_db.close()
-        wiki_mod._archive_roots_kv = SQLiteKeyValueStore(db_path=self._tmp_db.name)
+        wiki_mod._archive_roots_store = KVArchiveRootStore(SQLiteKeyValueStore(db_path=self._tmp_db.name))
         wiki_mod._archive_roots_cache = {}  # matches a fresh store's lazy-loaded state
 
     def tearDown(self):
         wiki_mod = self._wiki_mod
-        wiki_mod._archive_roots_kv = self._orig_kv
+        wiki_mod._archive_roots_store = self._orig_store
         wiki_mod._archive_roots_cache = self._orig_cache
         os.remove(self._tmp_db.name)
 
@@ -1523,8 +1524,7 @@ class TestDynamicArchiveRootRegistry(unittest.TestCase):
         # directly seed a stale, non-curated label -- bypassing
         # register_archive_root's no-overwrite guard -- to simulate data
         # registered before this preference existed
-        wiki_mod._archive_roots_kv.insert(
-            wiki_mod._ARCHIVE_ROOTS_NAMESPACE, _ARCHIVE_ROOT, json.dumps({"label": "StaleLabel", "description": ""}))
+        wiki_mod._archive_roots_store.put(_ARCHIVE_ROOT, {"label": "StaleLabel", "description": ""})
         wiki_mod._archive_roots_cache[_ARCHIVE_ROOT] = {"label": "StaleLabel", "description": ""}
         self.assertEqual(archive_root_label(_ARCHIVE_ROOT), "StaleLabel")
 
@@ -1555,8 +1555,7 @@ class TestDynamicArchiveRootRegistry(unittest.TestCase):
         import birddog.wiki as wiki_mod
         titles = ("Архів:__DedupProbeA__", "Архів:__DedupProbeB__")
         for title in titles:
-            wiki_mod._archive_roots_kv.insert(
-                wiki_mod._ARCHIVE_ROOTS_NAMESPACE, title, json.dumps({"label": "SharedProbeLabel", "description": ""}))
+            wiki_mod._archive_roots_store.put(title, {"label": "SharedProbeLabel", "description": ""})
             wiki_mod._archive_roots_cache[title] = {"label": "SharedProbeLabel", "description": ""}
 
         fixed = deduplicate_archive_root_labels()

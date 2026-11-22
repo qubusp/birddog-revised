@@ -25,6 +25,8 @@ x-airflow-common: &airflow-common
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
     # Birddog's own database, used by the DAGs
     AIRFLOW_CONN_BIRDDOG_PG: postgresql://birddog:${BIRDDOG_DB_PASSWORD}@postgres:5432/birddog
+    # the birddog library itself reads this (birddog/pg.py)
+    BIRDDOG_DATABASE_URL: postgresql://birddog:${BIRDDOG_DB_PASSWORD}@postgres:5432/birddog
     PYTHONPATH: /opt/birddog
   volumes:
     - ../dags:/opt/airflow/dags
