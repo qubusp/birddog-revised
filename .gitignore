@@ -25,3 +25,4 @@ deploy/rclone/rclone.conf
 
 # local Elyra (JupyterLab pipeline editor) venv
 .venv-elyra/
+.venv/

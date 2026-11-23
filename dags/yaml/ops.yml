@@ -23,23 +23,31 @@ stack_check:
       python_callable: birddog.dag_tasks.check_birddog_database
 
 backup_postgres:
-  description: Encrypted pg_dump to Google Drive (7 daily, 4 weekly, 12 monthly)
+  description: Nightly pg_dump kept on the server (7 days), plus encrypted copies on Google Drive (7 daily, 4 weekly, 12 monthly) once rclone is configured
   schedule: "0 2 * * *"
   tasks:
     - task_id: dump_and_upload
       operator: airflow.providers.standard.operators.bash.BashOperator
       bash_command: |
         set -euo pipefail
-        export PATH=/usr/lib/postgresql/16/bin:$PATH
+        export PATH=/usr/lib/postgresql/16/bin:$(printenv PATH)
         remote=gdrive-crypt:birddog-backups
         name=birddog-$(date -u +%Y%m%dT%H%MZ).dump
-        file=/tmp/$name
-        pg_dump --format=custom --no-owner --dbname="$BIRDDOG_DATABASE_URL" --file="$file"
+        # local copies guard against mistakes and corruption, not disk loss
+        local_dir=/opt/birddog/.cache/backups
+        mkdir -p "$local_dir"
+        file=$local_dir/$name
+        pg_dump --format=custom --no-owner --dbname="$(printenv BIRDDOG_DATABASE_URL)" --file="$file"
+        find "$local_dir" -name 'birddog-*.dump' -mtime +7 -delete
+        echo "dumped $file ($(du -h "$file" | cut -f1))"
+        if ! rclone listremotes 2>/dev/null | grep -q '^gdrive-crypt:$'; then
+            echo "rclone remote gdrive-crypt not configured: kept local copy only"
+            exit 0
+        fi
         rclone copyto "$file" $remote/daily/$name
         # Sundays also go to weekly/, the 1st of the month to monthly/
         if [ "$(date -u +%u)" = 7 ]; then rclone copyto "$file" $remote/weekly/$name; fi
         if [ "$(date -u +%d)" = 01 ]; then rclone copyto "$file" $remote/monthly/$name; fi
-        rm -f "$file"
         rclone delete --min-age 8d $remote/daily || true
         rclone delete --min-age 35d $remote/weekly || true
         rclone delete --min-age 400d $remote/monthly || true
@@ -54,12 +62,12 @@ verify_restore:
       # restores as the postgres superuser (the birddog role can't create databases)
       bash_command: |
         set -euo pipefail
-        export PATH=/usr/lib/postgresql/16/bin:$PATH
+        export PATH=/usr/lib/postgresql/16/bin:$(printenv PATH)
         remote=gdrive-crypt:birddog-backups
         latest=$(rclone lsf --files-only $remote/daily | sort | tail -1)
         [ -n "$latest" ] || { echo "no backups found"; exit 1; }
         rclone copyto $remote/daily/$latest /tmp/restore.dump
-        export PGHOST=postgres PGUSER=postgres PGPASSWORD="$POSTGRES_PASSWORD"
+        export PGHOST=postgres PGUSER=postgres PGPASSWORD="$(printenv POSTGRES_PASSWORD)"
         dropdb --if-exists birddog_restore_check
         createdb birddog_restore_check
         pg_restore --no-owner --exit-on-error --dbname=birddog_restore_check /tmp/restore.dump
@@ -72,5 +80,5 @@ verify_restore:
     - task_id: drop_scratch
       operator: airflow.providers.standard.operators.bash.BashOperator
       trigger_rule: all_done
-      bash_command: PGHOST=postgres PGUSER=postgres PGPASSWORD="$POSTGRES_PASSWORD" /usr/lib/postgresql/16/bin/dropdb --if-exists birddog_restore_check
+      bash_command: PGHOST=postgres PGUSER=postgres PGPASSWORD="$(printenv POSTGRES_PASSWORD)" /usr/lib/postgresql/16/bin/dropdb --if-exists birddog_restore_check
       dependencies: [compare_counts]

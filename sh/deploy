@@ -10,6 +10,8 @@ DIR=birddog-revised
 rsync -az --delete \
     --exclude .git --exclude __pycache__ --exclude '*.pyc' \
     --exclude notebooks --exclude research --exclude deploy/.env \
+    --exclude 'deploy/rclone/*.conf' --exclude .cache --exclude '.venv*' --exclude 'venv*' \
+    --exclude graphify-out \
     ./ "$HOST:$DIR/"
 
 ssh "$HOST" "cd $DIR/deploy && bash -s" <<'EOF'
