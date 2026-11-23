@@ -98,8 +98,9 @@ The API route to load all archive pages takes days at MediaWiki's rate limits.
 1. `latest_dump_date()` picks the newest dated folder at dumps.wikimedia.org
    (`ukwikisource`) whose `articlesdump` status is `done`, unless `dump_date` is set.
 2. `download()` fetches the `.xml.bz2` into `BIRDDOG_DUMP_DIR` (default
-   `/opt/birddog/.cache/dumps`, the `birddog-cache` volume). Nothing in the code
-   deletes old dumps.
+   `/opt/birddog/.cache/dumps`, the `birddog-cache` volume). After a successful
+   load, `prune_old_dumps()` deletes dumps (and `.part` leftovers) older than the
+   one just loaded; newer ones are kept.
 3. `load()` parses each page's wikitext into the same structure the live API
    returns, and writes it with `pipeline.write_page_info`. Commits every 500
    pages. One bad page is rolled back to its savepoint and counted as an error.

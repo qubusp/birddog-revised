@@ -73,6 +73,32 @@ def download(date):
     return path
 
 
+_DUMP_NAME = re.compile(r"^ukwikisource-(\d{8})-pages-articles\.xml\.bz2(\.part)?$")
+
+
+def prune_old_dumps(keep_date):
+    """Deletes dumps (and unfinished .part downloads) older than keep_date from
+    DUMP_DIR. Each dump is ~1 GB and the cache volume is never cleaned
+    otherwise; newer dumps are left alone, in case an older date was loaded
+    on purpose. Returns the deleted file names."""
+    deleted = []
+    try:
+        names = os.listdir(DUMP_DIR)
+    except FileNotFoundError:
+        return deleted
+    for name in sorted(names):
+        m = _DUMP_NAME.match(name)
+        if m and m.group(1) < keep_date:
+            try:
+                os.remove(os.path.join(DUMP_DIR, name))
+                deleted.append(name)
+            except OSError as err:
+                _logger.warning(f"dump_backfill: could not delete {name}: {err}")
+    if deleted:
+        _logger.info(f"dump_backfill: deleted older dumps {deleted}")
+    return deleted
+
+
 def _archive_pages(path):
     """Yields (title, revision_timestamp, wikitext) for non-redirect pages in
     the archive namespace."""
@@ -203,6 +229,8 @@ def load(date=None):
         conn.commit()
     finally:
         conn_ctx.__exit__(None, None, None)
+    # only after the load committed: older dumps are no longer needed
+    summary["deleted_dumps"] = prune_old_dumps(date)
     _logger.info(f"dump_backfill: done {summary}")
     return summary
 
