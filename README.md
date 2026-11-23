@@ -4,6 +4,8 @@ Birddog is a web-based tool for navigating and translating Ukrainian archival do
 
 It also includes an experimental set of location-processing tools (under `research/`) for extracting and matching geographic references in document descriptions.
 
+> **Working on the rebuilt stack (Postgres, Airflow, Docker Compose)?** Start with [docs/onboarding/README.md](docs/onboarding/README.md). This README describes the legacy AWS app.
+
 ## Features
 
 - User accounts (signup / login / password reset)
