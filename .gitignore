@@ -26,3 +26,10 @@ deploy/rclone/rclone.conf
 # local Elyra (JupyterLab pipeline editor) venv
 .venv-elyra/
 .venv/
+
+# graphify knowledge-graph output (local tool)
+graphify-out/
+
+# test and coverage output
+.pytest_cache/
+htmlcov/
