@@ -1,0 +1,57 @@
+# Second example: the JewishGen SFTP tree -> core.ftp_entry, with the built-in
+# sftp_listing fetcher (no Python needed). DISABLED: the Airflow containers
+# have no SFTP_PASSWORD yet. To turn it on: add SFTP_PASSWORD to deploy/.env and
+# the airflow environment (a container recreate - plan it), set enabled: true.
+# Until then core.ftp_entry keeps what import_nocodb loaded from NocoDB.
+name: jewishgen_sftp
+description: Listing of the JewishGen SFTP site (directories and PDFs) upserted into core.ftp_entry
+owner: birddog data team
+notes: |
+  A full walk of the tree every run (the legacy FTPSiteManager skipped
+  directories whose mtime hadn't changed; this doesn't yet). JewishGen
+  rate-limits connection setup, so one connection is kept for the walk and
+  listings are spaced by delay_sec. Files whose size or mtime changed get
+  content_fp cleared and match_checked reset, so the matcher fingerprints them
+  again. Entries that disappeared are reported (gone), not deleted.
+enabled: false
+schedule: "30 1 * * *"
+tags: [ftp]
+
+fetch:
+  type: sftp_listing
+  host: sftp.jewishgen.org
+  port: 22
+  user: jbrandt
+  password_env: SFTP_PASSWORD
+  roots: ["/"]
+  suffixes: [pdf]               # directories are always kept
+  delay_sec: 0.2
+
+key: path
+mode: full
+
+transform: transform.sql
+
+verify:
+  - check: landed
+    min: 1000
+    max_shrink: 0.05
+  - check: sample_match
+    table: core.ftp_entry
+    key_column: path
+    fields: {type: type, size: size, folder: folder}
+    size: 300
+    min_percent: 99
+  - check: null_rate
+    table: core.ftp_entry
+    column: size
+    where: "type = 'file'"
+    max: 0.0
+
+produces:
+  - core/ftp_entry
+
+view: true
+pool: default_pool
+retries: 2
+retry_delay_sec: 600

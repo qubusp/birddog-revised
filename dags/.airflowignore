@@ -1,0 +1,3 @@
+# Source folders hold source.yml, SQL and fetch.py helpers, not DAG files;
+# dags/load_sources.py builds their DAGs.
+sources/
