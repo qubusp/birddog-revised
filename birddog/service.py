@@ -33,10 +33,8 @@ from birddog.wiki import canonicalize_title
 from birddog import pg
 from birddog import catalog
 from birddog.core import page_history
+from birddog.env import mode_mismatch
 from birddog.excel import list_templates, list_column_classes, default_column_header_map
-from birddog.cache import (
-    load_cached_object,
-    CacheMissError)
 from birddog.wiki import (
     all_archive_roots,
     archive_root_label,
@@ -1078,7 +1076,16 @@ users = Users()
 
 def create_app():
     # Build/configure the Flask app here, but DO NOT start runtime here.
+    warn_on_mode_mismatch()
     return app
+
+def warn_on_mode_mismatch():
+    """Logs a warning when BIRDDOG_DATABASE_URL and BIRDDOG_STORE_BACKEND
+    disagree (see env.mode_mismatch()). Returns the message, or None."""
+    message = mode_mismatch()
+    if message:
+        _logger.warning(f"startup: mode mismatch: {message}")
+    return message
 
 def start_runtime_once():
     global runtime

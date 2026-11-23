@@ -54,3 +54,24 @@ def store_backend():
     if os.environ.get("BIRDDOG_DATABASE_URL"):
         return "postgres"
     return "dynamodb" if detect_environment() == "aws" else "sqlite"
+
+
+def mode_mismatch():
+    """A warning message when the two mode switches disagree, else None.
+
+    pg.enabled() (BIRDDOG_DATABASE_URL) decides where page and archive data
+    is read from and whether background work runs in Airflow;
+    store_backend() decides where the app keeps its own state. With
+    BIRDDOG_STORE_BACKEND overriding one of them, the app runs half on each
+    stack, which is rarely what was meant."""
+    database = bool(os.environ.get("BIRDDOG_DATABASE_URL"))
+    backend = store_backend()
+    if database and backend != "postgres":
+        return (f"BIRDDOG_DATABASE_URL is set but BIRDDOG_STORE_BACKEND={backend}: catalog reads and "
+                f"background jobs use Postgres, while accounts, watchlists, alerts and logs are kept "
+                f"in {backend}. Unset BIRDDOG_STORE_BACKEND to keep everything in Postgres.")
+    if not database and backend == "postgres":
+        return ("BIRDDOG_STORE_BACKEND=postgres but BIRDDOG_DATABASE_URL is not set: app state has "
+                "no database to use and every store call will fail. Set BIRDDOG_DATABASE_URL, or "
+                "unset BIRDDOG_STORE_BACKEND for the legacy stores.")
+    return None
