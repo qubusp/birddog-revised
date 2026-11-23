@@ -312,6 +312,8 @@ services:
     environment:
       BIRDDOG_DATABASE_URL: postgresql://birddog_web:${BIRDDOG_WEB_DB_PASSWORD}@postgres:5432/birddog
       BIRDDOG_SECRET_KEY: ${BIRDDOG_SECRET_KEY}
+      # invite only: accounts via `python -m birddog.user_admin add` (open = public signup)
+      BIRDDOG_SIGNUP: ${BIRDDOG_SIGNUP:-closed}
       AIRFLOW_API_URL: http://airflow-apiserver:8080
       AIRFLOW_API_USER: ${AIRFLOW_API_USER:-birddog-web}
       AIRFLOW_API_PASSWORD: ${AIRFLOW_API_PASSWORD}

@@ -220,6 +220,7 @@ def home():
         landing_tab=landing_tab,
         runtime_state=runtime.state,
         database_available=runtime.database_update_enabled,
+        signup_open=_signup_open(),
         debug=app.debug,
         stage=os.environ.get("BIRDDOG_NOCODB_ENV") == "CLOUD_STAGE")
 
@@ -228,8 +229,16 @@ def home():
 from flask import request, jsonify, session, redirect, url_for
 
 # Signup Route
+# BIRDDOG_SIGNUP=closed: accounts are created by an admin with
+# `python -m birddog.user_admin add`, and the signup form is hidden
+def _signup_open():
+    return os.environ.get("BIRDDOG_SIGNUP", "open").lower() != "closed"
+
+
 @app.route('/signup', methods=['POST'])
 def signup():
+    if not _signup_open():
+        return jsonify({'success': False, 'message': 'Accounts are by invitation; ask a Birddog administrator.'}), 403
     data = request.get_json() or {}
     name = data.get('name')
     email = data.get('email')

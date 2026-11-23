@@ -236,6 +236,13 @@ class TestServiceRoutes(unittest.TestCase):
         resp = self.client.post("/signup", json={"name": TEST_NAME, "email": TEST_EMAIL, "password": TEST_PASSWORD})
         self.assertEqual(resp.status_code, 400)
 
+    def test_signup_closed(self):
+        service.users.create.reset_mock()
+        with patch.dict("os.environ", {"BIRDDOG_SIGNUP": "closed"}):
+            resp = self.client.post("/signup", json={"name": TEST_NAME, "email": TEST_EMAIL, "password": TEST_PASSWORD})
+        self.assertEqual(resp.status_code, 403)
+        service.users.create.assert_not_called()
+
     def test_login_and_logout(self):
         # missing fields
         resp = self.client.post("/login", json={"email": TEST_EMAIL})
