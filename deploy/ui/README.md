@@ -60,16 +60,18 @@ Don't add any other Postgres role to Mathesar. It would bypass the restrictions 
   `mathesar-media` as its volume.
 - `db/init/02-ui.sh` (runs as `postgres`) creates the roles `birddog_ui` and `mathesar`
   and the database `mathesar`. Role creation needs CREATEROLE, which `birddog` doesn't
-  have. initdb runs the script on a fresh volume, and `sh/deploy` runs it on every
-  deploy, which also re-syncs the passwords from `.env`. To run it by hand:
+  have. initdb runs the script on a fresh volume, and `sh/deploy-data --init-roles`
+  re-runs it, which also re-syncs the passwords from `.env`. To run it by hand:
   `docker compose exec -T postgres bash /docker-entrypoint-initdb.d/02-ui.sh`.
 - `db/migrations/004_ui_role.sql` holds the grants for `birddog_ui`.
-- `ui/setup.sh` is idempotent and runs on every deploy. It creates or updates the
+- `ui/setup.sh` is idempotent. No deploy script runs it since the two-box split
+  (its `ui/views.sh` step execs into `postgres`, on the data box); run it by hand. It creates or updates the
   admin user, installs or upgrades the Mathesar SQL into `birddog` after an image
   bump, and connects the `birddog` database through `birddog_ui`.
 - `.env` keys: `BIRDDOG_UI_DB_PASSWORD`, `MATHESAR_DB_PASSWORD`,
   `MATHESAR_SECRET_KEY`, `MATHESAR_ADMIN_USER`, `MATHESAR_ADMIN_PASSWORD`.
-  `sh/deploy` appends any that are missing.
+  `sh/deploy-apps` adds the missing ones on the apps box, except
+  `BIRDDOG_UI_DB_PASSWORD`, which must be copied from the data box.
 
 ## Saved views (recreated from NocoDB)
 

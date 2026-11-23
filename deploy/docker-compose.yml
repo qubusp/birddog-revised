@@ -1,10 +1,15 @@
-# Birddog stack on one machine: Postgres (system of record + Airflow metadata)
-# and Airflow 3 with the LocalExecutor. Everything binds to 127.0.0.1; reach the
-# Airflow UI through an SSH tunnel until Caddy is added:
-#   ssh -L 8080:127.0.0.1:8080 administrator@<host>
+# Birddog stack: Postgres (system of record + Airflow metadata), Airflow 3 with
+# the LocalExecutor, the web app and the curator/notebook tools, behind Caddy.
+# It runs on two boxes; each box's deploy/.env sets COMPOSE_FILE to add its
+# override (docker-compose.databox.yml or docker-compose.appsbox.yml), so a
+# plain `docker compose` there only sees that box's services. See two-box.md.
+#
+# Only Caddy (80/443) is public: airflow.<PUBLIC_DOMAIN> on the data box, the
+# apps' sites on the apps box. Every other port binds to 127.0.0.1 (SSH tunnel).
 #
 # Secrets live in deploy/.env (not committed) -- see .env.example.
-#   docker compose up -d --build
+# Deploy with sh/deploy-data and sh/deploy-apps (docs/onboarding/operations.md);
+# on the data box, `up` recreates Postgres/Airflow on any .env change.
 
 x-airflow-common: &airflow-common
   build:
@@ -206,7 +211,7 @@ services:
         condition: service_healthy
 
   # Build-only: the per-user notebook image the hub spawns. Never started by
-  # compose (profile); sh/deploy builds it before `up`.
+  # compose (profile); sh/deploy-apps builds it before `up`.
   jupyter-singleuser:
     build:
       context: ..
@@ -330,7 +335,8 @@ services:
       postgres:
         condition: service_healthy
 
-  # Public HTTPS for Airflow, Mathesar and JupyterHub (the only ports open to the world)
+  # Public HTTPS (the only ports open to the world); each box's override picks
+  # its Caddyfile (caddy/Caddyfile.databox, caddy/Caddyfile.appsbox)
   caddy:
     image: caddy:2.11.8
     restart: unless-stopped

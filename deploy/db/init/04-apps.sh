@@ -7,8 +7,8 @@
 # (PG_DB_OWNER=false) nor per-workspace roles (TJDB_SQL_MODE_DISABLE=true).
 # Neither role can connect to birddog; the apps reach Birddog data as birddog_ui.
 #
-# Runs as postgres when the volume is first created, and again on every deploy
-# via sh/deploy:
+# Runs as postgres when the volume is first created. No deploy script re-runs it
+# (the apps' databases moved to apps-postgres on the apps box); by hand:
 #   docker compose exec -T -e TOOLJET_DB_PASSWORD -e SALTCORN_DB_PASSWORD postgres \
 #       bash /docker-entrypoint-initdb.d/04-apps.sh
 # Passwords come on the exec (not the postgres service env) so adding them never
@@ -16,7 +16,7 @@
 set -euo pipefail
 
 if [ -z "${TOOLJET_DB_PASSWORD:-}" ] || [ -z "${SALTCORN_DB_PASSWORD:-}" ]; then
-    echo "04-apps.sh: TOOLJET_DB_PASSWORD/SALTCORN_DB_PASSWORD not set; skipping (sh/deploy re-runs it)"
+    echo "04-apps.sh: TOOLJET_DB_PASSWORD/SALTCORN_DB_PASSWORD not set; skipping (re-run it by hand)"
     exit 0
 fi
 

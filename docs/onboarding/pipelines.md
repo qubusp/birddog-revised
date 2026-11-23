@@ -1,10 +1,27 @@
 # Pipelines
 
 Every DAG the stack runs, what triggers it, and what it touches. Schedules are
-UTC. Airflow runs with `DAGS_ARE_PAUSED_AT_CREATION=true`, so a DAG that does
-not set `is_paused_upon_creation: false` comes up **paused**, and its schedule
-does nothing until someone unpauses it in the Airflow UI. Only the `app_*` DAGs
-are set to start unpaused. Check the state before expecting a scheduled run.
+UTC.
+
+**Paused or not.** Airflow runs with `DAGS_ARE_PAUSED_AT_CREATION=true`, and only
+`dags/yaml/app.yml` sets `is_paused_upon_creation: false`. That decides the state
+a DAG gets the first time Airflow sees it, nothing more: after that the state is
+whatever someone last set in the UI, and it is kept in Airflow's database, not in
+the repo. On the data box most DAGs have been unpaused by hand. State on
+2026-11-23 (`airflow dags list`):
+
+| Unpaused (schedules run) | Paused |
+|---|---|
+| `app_refresh_page`, `app_translate_page`, `app_watchlist_check`, `wiki_changes`, `refresh_pages`, `refresh_doc_metadata`, `backup_postgres`, `backfill_from_dump`, `import_nocodb` | `translate`, `verify_restore`, `stack_check`, `migrate_dynamodb_users`, `source_nocodb_locations`, `elyra_hello` |
+
+`backup_postgres` is unpaused although `deploy/rclone/rclone.conf` is not on the
+server, so it fails every night (see [Ops](#ops-dagsyamlopsyml)). Check the
+current state before expecting a scheduled run:
+
+```bash
+ssh administrator@204.12.218.112 \
+  'cd birddog-revised/deploy && docker compose exec -T airflow-scheduler airflow dags list -o plain'
+```
 
 Files: DAGs from `dags/yaml/*.yml` are built by `dags/load_yaml_dags.py`
 (dag-factory). Task code is in `birddog/dag_tasks.py`, `dag_tasks_app.py` and
@@ -60,7 +77,9 @@ Default `max_active_runs: 1`, 1 retry, 600 s apart.
 
 **Not working yet.** Both backup DAGs need `deploy/rclone/rclone.conf` with the
 `gdrive-crypt` remote, which is not on the server. See
-[operations.md](operations.md#backups). Keep these DAGs paused until it is set up.
+[operations.md](operations.md#backups). `verify_restore` is paused;
+`backup_postgres` is unpaused and fails until the remote is set up (pause it, or
+set up the remote).
 
 ## One-off migrations (manual)
 
@@ -153,8 +172,9 @@ Do this on the server only with the owner's agreement.
 6. Pool: set `pool: wiki_api` for anything that calls MediaWiki. A new pool needs
    `airflow pools set` (the `airflow-init` command already sets `wiki_api`).
 7. Check it parses: see the DAG test in [local-dev.md](local-dev.md#dag-parse-tests).
-8. Deploy: copy the files to the server. The dag-processor picks up changes, with
-   no restart. A new DAG is paused until someone unpauses it.
+8. Deploy: `sh/deploy-data` (after `--dry-run`). DAG files and `birddog/` are
+   bind-mounted, so the dag-processor picks up changes with no restart. A new DAG
+   is paused until someone unpauses it (unless it sets `is_paused_upon_creation: false`).
 
 **From Python** (rare): a file in `dags/` that defines a `DAG` object, as in
 `dags/elyra/elyra_hello.py`.

@@ -2,7 +2,7 @@
 # Roles and database for the curator UI (Mathesar, see deploy/ui/README.md).
 #
 # Runs as postgres when the volume is first created (after 01-databases.sh),
-# and again on every deploy via sh/deploy:
+# and again with sh/deploy-data --init-roles:
 #   docker compose exec -T postgres bash /docker-entrypoint-initdb.d/02-ui.sh
 # because role creation needs CREATEROLE, which the migration role (birddog)
 # doesn't have. Idempotent; also re-syncs the passwords from deploy/.env.

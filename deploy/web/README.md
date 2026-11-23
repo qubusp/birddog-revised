@@ -27,14 +27,17 @@ builds from the live wiki page and takes seconds.
 | `AIRFLOW_API_USER` / `AIRFLOW_API_PASSWORD` | Airflow user the app triggers DAG runs as (default user name `birddog-web`) |
 | `BIRDDOG_SMTP_*` | optional, password-reset mail |
 
-`sh/deploy` adds the first four to `.env` with random values when missing.
+On the data box, `sh/deploy-data` adds `BIRDDOG_WEB_DB_PASSWORD` and
+`AIRFLOW_API_*` with random values when missing. Copy those three to the apps
+box's `.env`; `sh/deploy-apps` stops when they are missing there, and adds
+`BIRDDOG_SECRET_KEY` itself.
 
 ## First rollout
 
 From `~/birddog-revised/deploy` on the server, after the code is synced:
 
 ```bash
-# 1. secrets (skip any that sh/deploy already added)
+# 1. secrets (skip any the deploy scripts already added)
 grep -q '^BIRDDOG_SECRET_KEY=' .env      || echo "BIRDDOG_SECRET_KEY=$(openssl rand -hex 32)" >> .env
 grep -q '^BIRDDOG_WEB_DB_PASSWORD=' .env || echo "BIRDDOG_WEB_DB_PASSWORD=$(openssl rand -hex 24)" >> .env
 grep -q '^AIRFLOW_API_USER=' .env        || echo "AIRFLOW_API_USER=birddog-web" >> .env
@@ -67,7 +70,8 @@ docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
 (`env_file`), so the new keys make compose recreate it (a second or two of
 downtime for all sites); the `caddy reload` then is a no-op safety net. Note
 the Airflow services read `.env` too: a later plain `docker compose up -d`
-(e.g. `sh/deploy`) will recreate them because of the new keys.
+will recreate them because of the new keys (`sh/deploy-data` never runs it
+without `--restart-airflow`).
 
 The DAG files (`dags/yaml/app.yml`) and task code are bind-mounted into the
 Airflow containers, so the dag-processor picks them up without a restart.

@@ -2,8 +2,8 @@
 # birddog_web: the role the Flask app (birddog-web, deploy/web/README.md)
 # connects as.
 #
-# Runs as postgres when the volume is first created, and again on every deploy
-# via sh/deploy (role creation needs CREATEROLE, which birddog lacks):
+# Runs as postgres when the volume is first created, and again with
+# sh/deploy-data --init-roles (role creation needs CREATEROLE, which birddog lacks):
 #   docker compose exec -T -e BIRDDOG_WEB_DB_PASSWORD postgres \
 #       bash /docker-entrypoint-initdb.d/05-web.sh
 # The password is passed on the exec rather than in the postgres service's
@@ -12,7 +12,7 @@
 set -euo pipefail
 
 if [ -z "${BIRDDOG_WEB_DB_PASSWORD:-}" ]; then
-    echo "05-web.sh: BIRDDOG_WEB_DB_PASSWORD not set; skipping (sh/deploy re-runs it)"
+    echo "05-web.sh: BIRDDOG_WEB_DB_PASSWORD not set; skipping (sh/deploy-data --init-roles re-runs it)"
     exit 0
 fi
 

@@ -6,8 +6,8 @@ Read this before you touch the server. The rules in it come from the owner.
 
 | Item | Value |
 |---|---|
-| SSH | Data box `ssh administrator@204.12.218.112` (the default host in `sh/deploy`); apps box `ssh administrator@108.181.191.55`. Key-based login only. See [two-box.md](../../deploy/two-box.md). |
-| Code | `~/birddog-revised/` on the server. **Not a git checkout.** Code arrives by rsync from your laptop. |
+| SSH | Data box `ssh administrator@204.12.218.112` (default host of `sh/deploy-data`); apps box `ssh administrator@108.181.191.55` (default host of `sh/deploy-apps`). Key-based login only. See [two-box.md](../../deploy/two-box.md). |
+| Code | `~/birddog-revised/` on each box. **Not a git checkout.** Code arrives by rsync from your laptop, from whatever checkout you run the deploy script in. |
 | Compose | `~/birddog-revised/deploy/`. Run all `docker compose` commands from there. |
 | Containers | Project name `deploy`, so names look like `deploy-postgres-1`. |
 | Public sites | `https://airflow.204-12-218-112.sslip.io` (data box); `https://<service>.108-181-191-55.sslip.io` for `data`, `hub`, `apps`, `saltcorn`, `birddog` (apps box) (see [README.md](README.md#target-architecture)). |
@@ -16,13 +16,15 @@ Read this before you touch the server. The rules in it come from the owner.
 Tunnels from your laptop:
 
 ```bash
+# data box
 ssh -N -L 8080:127.0.0.1:8080 administrator@204.12.218.112   # Airflow      http://localhost:8080
-ssh -N -L 8000:127.0.0.1:8000 administrator@204.12.218.112   # Mathesar     http://localhost:8000
-ssh -N -L 8001:127.0.0.1:8001 administrator@204.12.218.112   # JupyterHub   http://localhost:8001
-ssh -N -L 8082:127.0.0.1:8082 administrator@204.12.218.112   # ToolJet
-ssh -N -L 8083:127.0.0.1:8083 administrator@204.12.218.112   # Saltcorn
-ssh -N -L 8084:127.0.0.1:8084 administrator@204.12.218.112   # birddog-web
 ssh -N -L 15432:127.0.0.1:5432 administrator@204.12.218.112  # Postgres (superuser or birddog)
+# apps box
+ssh -N -L 8000:127.0.0.1:8000 administrator@108.181.191.55   # Mathesar     http://localhost:8000
+ssh -N -L 8001:127.0.0.1:8001 administrator@108.181.191.55   # JupyterHub   http://localhost:8001
+ssh -N -L 8082:127.0.0.1:8082 administrator@108.181.191.55   # ToolJet
+ssh -N -L 8083:127.0.0.1:8083 administrator@108.181.191.55   # Saltcorn
+ssh -N -L 8084:127.0.0.1:8084 administrator@108.181.191.55   # birddog-web
 ```
 
 Only Caddy (80 and 443) is meant to be reachable from the internet.
@@ -30,75 +32,109 @@ Only Caddy (80 and 443) is meant to be reachable from the internet.
 ## What is and is not in git
 
 - Everything under `~/birddog-revised/` on the server came from the repo, except:
-  - `deploy/.env`: secrets, created on the server by `sh/deploy`, never in git.
+  - `deploy/.env`: secrets, one per box, created on the server by the deploy
+    scripts, never in git.
   - `deploy/rclone/rclone.conf` (not yet present): backup remote credentials, gitignored.
-  - Docker volumes: `pg-data` (the database), `airflow-logs`, `birddog-cache`, `caddy-data`, `jupyterhub-data`, `saltcorn-data`, `mathesar-media`, `birddog-web-cache`.
-- Do not edit files on the server. The next deploy overwrites them (`--delete`).
+  - Docker volumes. Data box: `pg-data` (the database), `airflow-logs`,
+    `birddog-cache`, `caddy-data`. Apps box: `apps-pg-data`, `jupyterhub-data`,
+    `saltcorn-data`, `mathesar-media`, `birddog-web-cache`, `caddy-data`.
+- Do not edit files on the server. The next deploy overwrites them, and deletes
+  files that are not in your checkout (`rsync --delete`). The rsync never copies
+  or deletes `deploy/.env*`, `deploy/rclone/*.conf`, `.git`, caches (`.cache`,
+  `__pycache__`), virtualenvs, `graphify-out`, `notebooks/` or `research/`
+  (list: `RSYNC_EXCLUDES` in `sh/lib/deploy-common.sh`).
 
 ## Deploying code
 
-From your laptop, at the repo root:
+One script per box, run from the repo root of the checkout you want to ship.
+**Run each with `--dry-run` first**: it changes nothing on the server and shows
+what rsync would copy or delete, which `.env` keys are missing, which
+migrations are new, and which containers are out of date.
 
 ```bash
-sh/deploy                       # default host administrator@204.12.218.112
-sh/deploy user@host             # another host
+sh/deploy-data --dry-run        # data box, 204.12.218.112
+sh/deploy-data
+sh/deploy-apps --dry-run        # apps box, 108.181.191.55
+sh/deploy-apps
+sh/deploy-data --dry-run user@otherhost   # another host
 ```
 
-What it does:
+Order: `sh/deploy-data` first when the change has a migration or DAG/task code
+the web app relies on, then `sh/deploy-apps`. Both refuse to run when the box's
+`deploy/.env` selects the other box's override (`COMPOSE_FILE`).
 
-1. `rsync -az --delete` the repo to `~/birddog-revised/`, excluding `.git`,
-   `__pycache__`, `*.pyc`, `notebooks/`, `research/` and `deploy/.env`.
-2. On the server: creates `deploy/.env` on the first run (random secrets), and
-   appends any missing keys on later runs. It never regenerates existing ones.
-3. Builds the `jupyter-singleuser` image, then `docker compose up -d --build`.
-4. Runs the init scripts `02-ui.sh`, `03-reader.sh`, `04-apps.sh`, `05-web.sh`
-   as `postgres` (idempotent, and they re-sync role passwords from `.env`).
-5. `docker compose run --rm migrate` (every migration, idempotent).
-6. `bash ui/setup.sh` (Mathesar admin, helper schemas, connection).
-7. Prints `docker compose ps`.
+### `sh/deploy-data` (data box)
 
-Three things to fix or know before relying on it:
+1. Adds missing keys to `deploy/.env` (random values made on the server; never
+   changes or prints an existing value).
+2. **Migrations, before any code is synced.** It streams the new files from
+   your checkout into `psql` as `birddog` and records each in
+   `public.schema_migrations` (file name and sha256; the table is created on
+   the first run, which therefore applies every file once, as the `migrate`
+   service used to on each `up`). A file that fails stops the deploy before the
+   code goes out. A recorded file whose content changed is reported, not
+   re-applied; `--all-migrations` re-runs every file.
+3. rsync of the repo. DAG files, `birddog/` and `resources/` are bind-mounted
+   into the Airflow containers, so new code is live without a restart.
+4. Reports, for `postgres` and `airflow-*`, whether the running container still
+   matches the compose config (the config hash compose stores on the container)
+   and its image. A `DRIFT` line means a plain `docker compose up -d` would
+   recreate it (any `.env` change does this). **It never recreates them.** With
+   the owner's OK:
+   - `--restart-airflow`: rebuild the Airflow image, run `airflow-init`, then
+     `up -d --no-deps` the Airflow services (only changed ones are recreated).
+     Needed after a change to `deploy/airflow/Dockerfile` or
+     `deploy/airflow/requirements.txt` (the script points it out).
+   - `--restart-postgres`: `up -d --no-deps postgres`.
+5. Caddy: recreated if its config drifted, restarted if `caddy/Caddyfile.databox`
+   changed (a single-file bind mount keeps the old file until a restart, so a
+   `caddy reload` is not enough).
 
-- **`rsync --delete` will delete `deploy/rclone/rclone.conf` on the server** once
-  it exists, because the file is neither in the repo nor excluded. Add
-  `--exclude deploy/rclone/rclone.conf` (or a protect filter) to `sh/deploy`
-  before backups are set up.
-- The excludes do not cover `.cache/` or `.venv-elyra/`, which are local-only
-  and get copied to the server. Add them.
-- Step 3 (`up -d --build`) runs before step 5 (migrations). `birddog-web` does not
-  depend on `migrate`, so new web code can run briefly before a new migration.
-  Migrate first for schema changes (below).
+`--init-roles` also re-runs `db/init/02-ui.sh`, `03-reader.sh` and `05-web.sh`
+as `postgres` (creates missing roles, re-syncs their passwords from `.env`).
+Needed on a new box; otherwise only after changing one of those passwords.
 
-`sh/deploy` runs `up -d`, which recreates any service whose config or image
-changed. That can include `postgres` and the `airflow-*` services. Check with the
-owner before a deploy that changes either (see [Restarts](#restarts)).
+### `sh/deploy-apps` (apps box)
 
-### Migrations before code
+1. Adds missing apps-box keys to `deploy/.env`. Keys that must equal the data
+   box's (`BIRDDOG_UI_DB_PASSWORD`, `JUPYTER_DB_PASSWORD`,
+   `BIRDDOG_WEB_DB_PASSWORD`, `AIRFLOW_API_USER`, `AIRFLOW_API_PASSWORD`) are
+   only checked: if one is missing it stops and writes nothing.
+2. rsync of the repo.
+3. Builds `birddog-web`, `jupyterhub` and the `jupyter-singleuser` notebook image.
+4. `docker compose up -d`: everything on this box may be recreated, so compose
+   recreates whatever changed (new images, config, `.env`).
+5. Restarts Caddy if `caddy/Caddyfile.appsbox` changed.
 
-For a change that needs a new migration:
+It does not run `ui/setup.sh` (Mathesar admin and connection): its `views.sh`
+step execs into `postgres`, which is on the data box. Run the Mathesar part by
+hand after a Mathesar upgrade.
 
-1. Write the migration (idempotent, next free number; see [local-dev.md](local-dev.md#migrations)).
-2. Apply it on the server, before the code that uses it goes out. Run it from
-   your laptop, streaming the file into `psql` as `birddog` over the container's
-   local socket (no password, as the init scripts do):
+### Things to know
 
-   ```bash
-   ssh administrator@204.12.218.112 \
-     'cd ~/birddog-revised/deploy && docker compose exec -T postgres psql -U birddog -d birddog -v ON_ERROR_STOP=1 -q' \
-     < deploy/db/migrations/014_example.sql
-   ```
+- The deploy ships your working tree, uncommitted changes included, and
+  deletes server files that are not in it. Deploy from an up-to-date checkout
+  of the branch that is live, or you roll back other people's work.
+- `rsync --delete` stops (before copying anything) when it would delete more
+  than 100 files: a sign of the wrong directory or branch.
+- `sh/deploy` only prints a pointer to the two scripts.
 
-   Or re-run every migration, which is what the `migrate` service does and is
-   safe because they are idempotent:
+### A migration by hand
 
-   ```bash
-   ssh administrator@204.12.218.112 'cd ~/birddog-revised/deploy && docker compose run --rm migrate'
-   ```
+`sh/deploy-data` does this for you. By hand, from your laptop, streaming the
+file into `psql` as `birddog` over the container's local socket (no password,
+as the init scripts do):
 
-3. Then `sh/deploy`, or rsync and restart the consuming service.
+```bash
+ssh administrator@204.12.218.112 \
+  'cd ~/birddog-revised/deploy && docker compose exec -T postgres psql -U birddog -d birddog -v ON_ERROR_STOP=1 -q' \
+  < deploy/db/migrations/014_example.sql
+```
 
-Migrations that grant to roles (004, 007, 012) need the roles to exist. The
-init scripts create them, so run the init script first on a new server.
+A file applied this way is not recorded in `public.schema_migrations`, so the
+next `sh/deploy-data` applies it again (harmless: every migration is idempotent).
+Migrations that grant to roles (004, 007, 012) need the roles to exist: on a new
+box run `sh/deploy-data --init-roles` first.
 
 ## Restarts
 
@@ -106,14 +142,14 @@ The owner's rule: `airflow-*` and `postgres` restarts need an explicit OK first.
 
 | Service | Restart without asking? | Command (from `~/birddog-revised/deploy`) | Notes |
 |---|---|---|---|
-| `birddog-web` | yes | `docker compose up -d --no-deps birddog-web` | Code is copied into the image. After a code change: `docker compose build birddog-web` first. Drops in-flight requests. |
+| `birddog-web` (apps box) | yes | `docker compose up -d --no-deps birddog-web` | Code is copied into the image. After a code change: `docker compose build birddog-web` first. Drops in-flight requests. |
 | `caddy` | yes | `docker compose up -d --no-deps caddy` | Config reload without restart: `docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile`. |
 | `saltcorn` | yes | `docker compose up -d --no-deps saltcorn` | Memory limit 512m. |
 | `tooljet` | yes | `docker compose up -d --no-deps tooljet` | Memory limit 1024m. Starts slowly (healthcheck `start_period` 300 s). |
 | `airflow-apiserver`, `airflow-scheduler`, `airflow-dag-processor` | **no, ask the owner first** | | Also any `airflow-init` run. |
 | `postgres` | **no, ask the owner first** | | Drops every connection, including the web app, Airflow, Mathesar and the notebooks. |
-| `mathesar`, `jupyterhub` | not on the owner's list | | Ask before restarting. |
-| `migrate` | not a restart | `docker compose run --rm migrate` | One-shot. |
+| `mathesar`, `jupyterhub`, `apps-postgres` (apps box) | yes | `docker compose up -d --no-deps <service>` | `sh/deploy-apps` recreates whatever changed on the apps box. |
+| `migrate` (data box) | not a restart | `docker compose run --rm migrate` | One-shot; re-runs every migration. `sh/deploy-data` applies new ones itself. |
 
 DAG files and `birddog/` library code are bind-mounted into the Airflow
 containers. Changes there need no restart. Changes to `deploy/airflow/requirements.txt`
@@ -125,8 +161,9 @@ Do not run `docker compose down -v`. It deletes the named volumes, including
 
 ## Secrets
 
-- The real values are only in the server's `deploy/.env`, mode 600. `sh/deploy`
-  creates it. It is gitignored and excluded from rsync.
+- The real values are only in each box's `deploy/.env`, mode 600. The deploy
+  scripts create it and add missing keys; they never print values. It is
+  gitignored and never copied or deleted by rsync.
 - `deploy/.env.example` in git has placeholders only. It is the list of keys.
 - Read `deploy/.env` only with the owner. Do not paste values into chats,
   tickets, commits or docs.
@@ -144,14 +181,14 @@ Do not run `docker compose down -v`. It deletes the named volumes, including
 
 ## Memory
 
-The host has no swap, and it stays that way. Each service has a hard `mem_limit`
-in `deploy/docker-compose.yml`, so one runaway process gets OOM-killed inside its
+The hosts have no swap, and it stays that way. Each service has a hard `mem_limit`
+in `deploy/docker-compose.yml` (or the box's override), so one runaway process gets OOM-killed inside its
 own container rather than swapping or taking the host down.
 
 | Service | `mem_limit` |
 |---|---|
-| `postgres` | 1536m |
-| `airflow-scheduler` (LocalExecutor runs task processes here) | 1536m |
+| `postgres` | 3g on the data box (`docker-compose.databox.yml`, with larger `shared_buffers`); 1536m in the base file |
+| `airflow-scheduler` (LocalExecutor runs task processes here) | 2560m on the data box; 1536m in the base file |
 | `airflow-apiserver` | 768m |
 | `airflow-dag-processor` | 512m |
 | `airflow-init` | 512m (one-shot) |
@@ -160,6 +197,7 @@ own container rather than swapping or taking the host down.
 | `mathesar` | 512m |
 | `saltcorn` | 512m |
 | `jupyterhub` | 256m (each user container: 2 GB, 1 CPU) |
+| `apps-postgres` (apps box) | 768m |
 | `caddy` | 128m |
 | `migrate` | 256m (one-shot) |
 
@@ -179,12 +217,14 @@ is not recorded in the repo.
 
 - `backup_postgres` (daily 02:00 UTC) and `verify_restore` (Sunday 04:00 UTC) read
   `deploy/rclone/rclone.conf`, which is not on the server.
-- Both DAGs should stay paused until the remote is configured. They are paused on
-  creation by the stack's default, unless someone has unpaused them.
+- Both DAGs should stay paused until the remote is configured. As of 2026-11-23
+  `verify_restore` is paused but `backup_postgres` is **unpaused** and fails
+  nightly (see [pipelines.md](pipelines.md)).
 - The off-box target is Google Drive, encrypted with rclone's crypt remote
   (`gdrive-crypt`). One-time setup, with the crypt password and salt kept safe:
   [deploy/rclone/README.md](../../deploy/rclone/README.md). Then copy the config to
-  `deploy/rclone/rclone.conf` on the server, after fixing the `sh/deploy` exclude.
+  `deploy/rclone/rclone.conf` on the data box. The deploy rsync never copies or
+  deletes `deploy/rclone/*.conf`.
 - Until then the only copy of the data is the `pg-data` volume on the server.
   Downloaded Wikimedia dumps in `birddog-cache` are not backups; they can be
   re-downloaded.
@@ -203,10 +243,11 @@ is not recorded in the repo.
 ## Open items for the owner
 
 - Off-box backup not set up (above).
-- `sh/deploy`: the `rclone.conf` exclude, and the `.cache/` and `.venv-elyra/` excludes.
-- Translation settings (`BIRDDOG_USE_GOOGLE_CLOUD_TRANSLATE`, `GOOGLE_TRANSLATE_API_KEY`)
-  are not in compose or `.env.example`, so the translate DAGs fail unless they are set in the server's `.env`.
-- `migrate_dynamodb_users` needs AWS credentials in the Airflow environment, which
-  are not in `.env.example`.
-- `source_jewishgen_sftp` needs `SFTP_PASSWORD` in the Airflow environment (the
-  source is disabled until then).
+- `backup_postgres` is unpaused and failing (no rclone remote).
+- `ui/setup.sh` (Mathesar admin and connection) is not run by any deploy script
+  since the two-box split.
+- Translation settings (`BIRDDOG_USE_GOOGLE_CLOUD_TRANSLATE`, `GOOGLE_TRANSLATE_API_KEY`),
+  AWS credentials for `migrate_dynamodb_users` and `SFTP_PASSWORD` for
+  `source_jewishgen_sftp` are listed in `.env.example` but not set on the data
+  box. Adding them changes `.env`, so the Airflow containers only see them after
+  a recreate (`sh/deploy-data --restart-airflow`, with the owner's OK).

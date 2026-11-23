@@ -170,7 +170,9 @@ raise its limit in `deploy/docker-compose.yml` and start it again with
 - Start or update only these services:
   `docker compose up -d --no-deps tooljet saltcorn`
 - Databases and roles come from `deploy/db/init/04-apps.sh`, which is
-  idempotent. `sh/deploy` runs it after `up`. To run it by hand:
+  idempotent. It targets the data box's Postgres; since the two-box split the
+  apps' databases live in `apps-postgres` on the apps box, and no deploy script
+  runs it. To run it by hand:
   ```
   TOOLJET_DB_PASSWORD=... SALTCORN_DB_PASSWORD=... \
     docker compose exec -T -e TOOLJET_DB_PASSWORD -e SALTCORN_DB_PASSWORD postgres \

@@ -14,7 +14,7 @@ cd ~/birddog-revised            # your checkout
 python3.12 -m venv venv         # "venv" is gitignored; ".venv" is not (see gaps below)
 . venv/bin/activate
 pip install -r requirements.txt # web app and library
-pip install pytest              # most tests use pytest; not listed in requirements-dev.txt
+pip install pytest              # the test runner (also listed in requirements-dev.txt)
 ```
 
 `requirements.txt` covers the web app and the library. The Airflow-only
@@ -36,15 +36,18 @@ top-level `requirements-dev.txt` is a full freeze from the old EB-era venv
 
 ## Running the tests
 
-Start with the tests that need no services:
+Use pytest, from the repo root:
 
 ```bash
-python -m pytest -q test/
+python -m pytest test
 ```
 
-`unittest` also works for the unittest-style files (`python -m unittest discover test`),
-but three source-kit test files import `pytest` at module level, so plain
-unittest discovery fails on them unless pytest is installed. Use pytest.
+Several test files import `pytest`, so `python -m unittest discover` does not
+work for the whole suite. The legacy NocoDB tests (`test_database.py`,
+`test_importer.py`, the `test_location_*` files) fail at import unless
+`BIRDDOG_NOCODB_ENV` is set (`LOCAL` plus `NOCODB_API_TOKEN_LOCAL`), and some
+tests call live services (the wiki, Wikimedia Commons, a local NocoDB), so a
+full run needs the network and can be slow.
 
 Tests that need a service skip themselves when their variable is missing, so a
 run with skips is normal.
@@ -119,8 +122,8 @@ is also skipped outside an Airflow environment and can run in the same image.
 
 ### Coverage
 
-`sh/coverage_report` uses `coverage run -m unittest`, so it has the same
-pytest-import problem for the source-kit files.
+`sh/coverage_report [pytest args]` runs `coverage run -m pytest test` and opens
+the HTML report (`pip install coverage`).
 
 ## Running the web app
 
@@ -184,11 +187,12 @@ See [deploy/web/README.md](../../deploy/web/README.md) for the production setup.
 
 ### Migrations
 
-- File name `NNN_short_name.sql`, three digits. The next free number is **014**.
-  010 is not used. Check the directory before picking a number.
-- Every file is re-run on every deploy (the `migrate` service runs them all in
-  name order) and on every scratch database in the tests. So each one must be
-  idempotent: `CREATE ... IF NOT EXISTS`, `CREATE OR REPLACE VIEW`, `DROP ... IF
+- File name `NNN_short_name.sql`, three digits. 010 is not used. Check the
+  directory (and open branches) before picking a number.
+- `sh/deploy-data` applies each new file once and records it in
+  `public.schema_migrations`, but files are still re-run: by the `migrate`
+  service, by `sh/deploy-data --all-migrations`, and on every scratch database
+  in the tests. So each one must be idempotent: `CREATE ... IF NOT EXISTS`, `CREATE OR REPLACE VIEW`, `DROP ... IF
   EXISTS` before a re-create, and `DO` blocks that skip a role that does not exist yet.
 - `CREATE OR REPLACE VIEW` can only append columns. To drop, rename or reorder
   one, `DROP VIEW` it first in the same file (009 and 006 say so).
@@ -214,6 +218,5 @@ See [deploy/web/README.md](../../deploy/web/README.md) for the production setup.
 
 ## Gaps in local tooling
 
-- `.gitignore` covers `venv*` and `.venv-elyra/`, but not `.venv/`. Use `venv/` or add the pattern.
-- `pytest` is not in `requirements-dev.txt`, although most of the newer tests need it.
-- The top-level README says to use `unittest` and that the venv has no pytest. Both are out of date.
+- `requirements-dev.txt` is a freeze of the old EB-era venv (with pytest added
+  at the end), not a curated dev list.

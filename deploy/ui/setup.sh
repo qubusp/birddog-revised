@@ -1,6 +1,7 @@
 #!/bin/bash
-# Configures the curator UI (Mathesar). Idempotent; sh/deploy runs it on every
-# deploy. Run from deploy/:  bash ui/setup.sh
+# Configures the curator UI (Mathesar). Idempotent. Run from deploy/:  bash ui/setup.sh
+# Not run by sh/deploy-apps: ui/views.sh execs into the postgres container,
+# which since the two-box split runs on the data box (deploy/two-box.md).
 #
 #  - creates/updates the Mathesar admin user from MATHESAR_ADMIN_USER/_PASSWORD
 #  - installs Mathesar's helper schemas (msar, __msar, mathesar_types) into the

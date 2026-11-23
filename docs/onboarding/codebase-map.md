@@ -75,11 +75,11 @@ Kept for legacy mode, and for code that still imports them:
 | `database.py` | Selects the output database. Always `NocoDBDatabase`, even in Postgres mode. |
 | `nocodb_database.py` | NocoDB implementation of the output database. **Legacy**. |
 | `abstract_database.py` | The `Database` interface and error types. Shared by old and new code (`InvalidRecordId` is imported by `database_updater.py`). |
-| `database_importer.py` | Spreadsheet/NocoDB importer. **Legacy**; only `test/test_importer.py` imports it. |
+| `database_importer.py` | Spreadsheet/NocoDB importer. Imported by `test/test_importer.py` and `notebooks/Import Tests.ipynb`; still being changed (DACHKO imports). Kept. |
 | `ftp.py` | `FTPSiteManager`: FTP listing and matching against NocoDB. **Legacy** (the replacement is the source kit). |
 | `locations/` | Experimental location tools (`matcher.py`, `finder.py`, `extractor.py`, `manager.py`). Manager writes NocoDB status fields. Not run by Airflow. |
-| `google_drive_procs.py`, `download_convert_to_pdf.py` | No importers found in the repo. Candidates for removal, not verified against the owner's use. |
-| `doc_compare/` | PDF and image comparison helpers. Only `test/test_compare_pdfs.py` imports them; no runtime caller found. |
+| `google_drive_procs.py`, `download_convert_to_pdf.py` | Standalone scripts (`python -m birddog.<name>`), not imported by anything. Kept: they are tools someone runs by hand (Drive spreadsheet download, page images to PDF). `google_drive_procs` needs `google-api-python-client` and `google-auth-oauthlib`, which are in no requirements file. |
+| `doc_compare/` | PDF and image comparison helpers. Only `test/test_compare_pdfs.py` imports them; no runtime caller yet. Kept as the candidate content check for duplicate documents. |
 | `dynamo_migrate.py` | Only the one-off AWS copy (see above). |
 
 ### Source kit
@@ -131,8 +131,9 @@ Kept for legacy mode, and for code that still imports them:
 
 ### Migrations
 
-Applied by the `migrate` service on `docker compose run --rm migrate` (and by
-`sh/deploy`). Every file is written to be re-run. **010 does not exist**; the
+On the server, `sh/deploy-data` applies new files before syncing code and
+records them in `public.schema_migrations`. The `migrate` service (`docker
+compose run --rm migrate`) re-runs all of them. Every file is written to be re-run. **010 does not exist**; the
 numbering goes 009 to 011.
 
 | File | One line |

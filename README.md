@@ -1,10 +1,38 @@
 # Birddog
 
-Birddog is a web-based tool for navigating and translating Ukrainian archival documents hosted on [WikiSource](https://uk.wikisource.org). It lets users track and evaluate changes to Wiki page content, manage a watchlist of archives, and export tracking spreadsheets for downstream processing.
+Birddog monitors and tracks Ukrainian archival documents hosted on
+[uk.wikisource.org](https://uk.wikisource.org) (the `Архів:` namespace): archive
+pages, the documents they link, their English translations, archival locations,
+and users' watchlists of archives.
 
-It also includes an experimental set of location-processing tools (under `research/`) for extracting and matching geographic references in document descriptions.
+## The current system
 
-> **Working on the rebuilt stack (Postgres, Airflow, Docker Compose)?** Start with [docs/onboarding/README.md](docs/onboarding/README.md). This README describes the legacy AWS app.
+- **Postgres** is the system of record (database `birddog`: schemas `raw`,
+  `core`, `app`, `views`).
+- **Airflow 3** DAGs keep it up to date from the wiki (recent changes, page
+  refresh, file metadata, translation, a dump backfill) and run data sources,
+  backups and the web app's background jobs. DAGs are YAML (`dags/yaml/`,
+  dag-factory) and source folders (`dags/sources/`); the task code is in
+  `birddog/`.
+- **birddog-web**, the Flask app in this repo, serves browse, search,
+  watchlists and exports from Postgres and starts Airflow runs for slow work.
+- Curators edit `core` tables in **Mathesar** (also ToolJet and Saltcorn);
+  analysts use **JupyterHub** notebooks with a read-only role.
+- Everything runs in Docker Compose (`deploy/`) on two servers: a data box
+  (Postgres, Airflow) and an apps box (web app and tools), linked by WireGuard
+  ([deploy/two-box.md](deploy/two-box.md)). Deploy with `sh/deploy-data` and
+  `sh/deploy-apps`.
+
+**Start with [docs/onboarding/README.md](docs/onboarding/README.md)**: code map,
+data model, pipelines, local development and tests (`python -m pytest test`),
+and operations (read that before touching a server).
+
+## Legacy app
+
+The rest of this README describes the pre-migration app (AWS Elastic
+Beanstalk, DynamoDB/S3 for app state, NocoDB as the output database). That
+code path still runs when `BIRDDOG_DATABASE_URL` is unset
+([codebase-map.md](docs/onboarding/codebase-map.md#legacy-vs-postgres-mode)).
 
 ## Features
 
@@ -42,7 +70,7 @@ birddog/
 ├── static/                 # Static Birddog client assets
 ├── resources/               # Application data, archive lists, db_config.json
 ├── docs/                    # End-user guide and API reference
-├── test/                    # Unit tests (unittest)
+├── test/                    # Tests (pytest)
 ├── sh/                      # Dev/run/deploy shell scripts
 ├── nocodb-dev/               # Local NocoDB (Docker) setup for development
 ├── notebooks/                # Jupyter notebooks
@@ -241,13 +269,15 @@ The `birddog/locations` package contains experimental tools for extracting and m
 
 ## Testing
 
-Core application code is covered by a `unittest` suite under `test/` (database, service routes, watcher, wiki scraping, tracker, translation, etc.). Run it with:
+Run the tests with pytest (it is in `requirements-dev.txt`; several test files need it):
 
 ```bash
-python -m unittest discover test
+python -m pytest test
 ```
 
-Note: this project's virtualenv does not include `pytest` — use `unittest`, not `pytest`.
+Tests that need Postgres, Airflow or another service skip themselves when their
+settings are missing; see [docs/onboarding/local-dev.md](docs/onboarding/local-dev.md#running-the-tests).
+The legacy NocoDB tests need `BIRDDOG_NOCODB_ENV` set (see Persistence above).
 
 ---
 

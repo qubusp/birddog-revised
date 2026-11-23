@@ -52,7 +52,7 @@ Notebooks connect as Postgres role `birddog_reader` via
   are killed after 10 min (so a forgotten open transaction can't block
   imports/migrations); max 30 connections.
 
-Role: `deploy/db/init/03-reader.sh` (run as postgres by `sh/deploy`, needs
+Role: `deploy/db/init/03-reader.sh` (run as postgres by `sh/deploy-data --init-roles`, needs
 `JUPYTER_DB_PASSWORD`). Grants: `deploy/db/migrations/007_reader_role.sql`.
 
 ## Operating it
@@ -67,7 +67,7 @@ docker ps --filter name=jupyter-                                # user servers
 
 Users' servers keep running across a hub restart. A new user image is picked
 up the next time each user's server starts (stop it from `/hub/admin`).
-`sh/deploy` does all of the above.
+`sh/deploy-apps` builds both images and runs `docker compose up -d` on the apps box.
 
 ## Security notes
 

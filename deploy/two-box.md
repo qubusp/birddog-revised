@@ -3,7 +3,7 @@
 | Box | Address | Runs | Public sites |
 |---|---|---|---|
 | Data box | 204.12.218.112 | Postgres, Airflow (api-server, scheduler, dag-processor), backups | `airflow.204-12-218-112.sslip.io` |
-| Apps box | 108.181.191.55 | birddog-web, Mathesar, JupyterHub, ToolJet, Saltcorn | `birddog.`, `data.`, `hub.`, `apps.`, `saltcorn.` on `108-181-191-55.sslip.io` |
+| Apps box | 108.181.191.55 | birddog-web, Mathesar, JupyterHub, ToolJet, Saltcorn, apps-postgres | `birddog.`, `data.`, `hub.`, `apps.`, `saltcorn.` on `108-181-191-55.sslip.io` |
 
 Both boxes use the same `docker-compose.yml`. Each box's `deploy/.env` sets
 `COMPOSE_FILE` to add its own override, so a plain `docker compose up -d` only
@@ -15,7 +15,8 @@ starts that box's services:
   (Postgres and Airflow behind profile `databox`, Caddy serves `caddy/Caddyfile.appsbox`)
 
 The apps' own metadata databases (mathesar, tooljet, tooljet_db,
-tooljet_sample, saltcorn) stay in the data box's Postgres.
+tooljet_sample, saltcorn) live in `apps-postgres` on the apps box (not
+published on any port); only Birddog data crosses the link.
 
 ## Private link (WireGuard)
 
@@ -47,7 +48,8 @@ timeout 3 bash -c '</dev/tcp/10.77.0.1/5432' && echo ok   # apps box
 
 ## Deploying
 
-Sync the repo to each box (rsync, excluding `deploy/.env`, `.git`, caches;
-see docs/onboarding/operations.md). Apply migrations on the data box with psql
-before syncing code that needs them. On the apps box:
-`docker compose build birddog-web jupyterhub && docker compose up -d`.
+`sh/deploy-data` (data box) and `sh/deploy-apps` (apps box), each with
+`--dry-run` first; see docs/onboarding/operations.md. The data-box script
+applies new migrations before syncing code and never recreates Postgres or
+Airflow without `--restart-airflow` / `--restart-postgres`. The apps-box script
+builds `birddog-web` and `jupyterhub` and runs `docker compose up -d`.

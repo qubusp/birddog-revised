@@ -44,7 +44,8 @@ and reached through an SSH tunnel.
 | Service | Image / code | Public host | Local port | Role |
 |---|---|---|---|---|
 | `caddy` | caddy:2.11.8 | 80, 443 | - | HTTPS reverse proxy for the sites below |
-| `postgres` | postgres:16 | - | 5432 | system of record: database `birddog`; also Airflow, Mathesar, ToolJet, Saltcorn metadata |
+| `postgres` | postgres:16 | - | 5432 | data box. System of record: database `birddog`; also Airflow's metadata |
+| `apps-postgres` | postgres:16 | - | - | apps box. Metadata of Mathesar, ToolJet and Saltcorn |
 | `migrate` | postgres:16, one-shot | - | - | applies `deploy/db/migrations/*.sql` in order |
 | `airflow-apiserver` | `birddog-airflow:local` (apache/airflow:3.3.2) | `airflow.` | 8080 | Airflow UI and REST API |
 | `airflow-scheduler`, `airflow-dag-processor` | same image | - | - | LocalExecutor; task processes run in the scheduler container |
@@ -91,7 +92,7 @@ The code still contains the pre-migration app: AWS Elastic Beanstalk, DynamoDB
 and S3 for app state, and NocoDB as the output database. It runs whenever
 `BIRDDOG_DATABASE_URL` is unset. The mode switch is described in
 [codebase-map.md](codebase-map.md#legacy-vs-postgres-mode). The top-level
-`README.md` describes the legacy app and is out of date for the new stack.
+`README.md` gives a short overview of the new stack, then documents the legacy app.
 
 ## Reading order
 

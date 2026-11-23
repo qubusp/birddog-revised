@@ -2,7 +2,7 @@
 
 Elyra 4.2.0 is a visual pipeline editor that runs inside JupyterLab. It runs only
 on your laptop. You draw a pipeline from Airflow operators, export it to a DAG
-`.py` file in `dags/elyra/`, and the normal deploy (`sh/deploy`) ships that file
+`.py` file in `dags/elyra/`, and the normal deploy (`sh/deploy-data`) ships that file
 to the server's Airflow (3.3.2, LocalExecutor). The server has no Elyra, no
 Kubernetes and no S3.
 
