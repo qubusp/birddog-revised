@@ -33,3 +33,6 @@ graphify-out/
 # test and coverage output
 .pytest_cache/
 htmlcov/
+
+# local credentials sheet, never committed
+LOGINS.md
