@@ -8,6 +8,7 @@ strings here; _flag() reads them."""
 import logging
 
 from birddog import pg
+from birddog.dag_tasks import TRANSLATE_BATCH
 
 _logger = logging.getLogger(__name__)
 
@@ -17,7 +18,6 @@ SUBTREE_BATCH = 20
 # safety cap for one deep refresh (the largest archives have ~100k pages; the
 # regular refresh_pages DAG drains whatever is left stale)
 SUBTREE_MAX_PAGES = 20000
-TRANSLATE_BATCH = 50
 
 
 def _flag(value):
