@@ -7,8 +7,8 @@ does nothing until someone unpauses it in the Airflow UI. Only the `app_*` DAGs
 are set to start unpaused. Check the state before expecting a scheduled run.
 
 Files: DAGs from `dags/yaml/*.yml` are built by `dags/load_yaml_dags.py`
-(dag-factory). Task code is in `birddog/dag_tasks.py`, `dag_tasks_app.py` and
-`dag_tasks_users.py`, and the Postgres writers are in `birddog/pipeline.py`.
+(dag-factory). Task code is in `birddog/dag_tasks.py`, `dag_tasks_app.py`,
+`dag_tasks_users.py` and `dag_tasks_docs.py`, and the Postgres writers are in `birddog/pipeline.py`.
 Source DAGs come from `dags/load_sources.py`.
 
 Asset URIs have the form `postgres://postgres:5432/birddog/core/page`. A DAG
@@ -61,6 +61,58 @@ Default `max_active_runs: 1`, 1 retry, 600 s apart.
 **Not working yet.** Both backup DAGs need `deploy/rclone/rclone.conf` with the
 `gdrive-crypt` remote, which is not on the server. See
 [operations.md](operations.md#backups). Keep these DAGs paused until it is set up.
+
+## Documents (`dags/yaml/documents.yml`)
+
+Consumers of the queue views `core.v_docs_need_dupe_check` and
+`core.v_ftp_need_match`. Task code: `birddog/dag_tasks_docs.py`, work in
+`birddog/doc_matching.py`. Both DAGs come up paused. Default 1 retry, 300 s apart.
+
+| DAG | Trigger | What it does | Assets |
+|---|---|---|---|
+| `link_duplicates` | cron `55 * * * *`, or `core/document` | `batches` takes up to 20 000 sha1 hashes with an unchecked document, 1000 per batch (a hash group never spans two batches). `link` (mapped) links each group in `core.document_duplicate` and sets `dupes_checked`. | in: `core/document`; out: `core/document_duplicate` |
+| `match_ftp_documents` | cron `40 */6 * * *`, or `core/ftp_entry` | `ftp_batches` / `ftp_fingerprint`: up to 2000 FTP files with a same-size document and no fingerprint are read over SFTP, 100 per batch, one batch at a time. `doc_batches` / `doc_fingerprint`: up to 2000 wiki files that share a size with a fingerprinted FTP file get theirs (imageinfo + two HTTP Range reads, pool `wiki_api`). `reconcile`: SQL only, writes `core.ftp_document` and `match_checked`. | in: `core/ftp_entry`; out: `core/ftp_document` |
+
+**Duplicates.** Same rules as the legacy `link_hash_duplicates`. A group that
+already has a prevailing document keeps it. Otherwise an imported document not
+coded "duplicate" prevails, then any imported one, then the lowest id. The other
+members get a link to it. A birddog-created member gets `process_code =
+'duplicate'`. An imported member keeps its code and gets `anomaly` with
+"hash duplicate of <url>" in `anomaly_comment`, once.
+
+**FTP matching.** A fingerprint is `<size>:<sha1 of first 64 KB>:<sha1 of last
+64 KB>` (the whole file below 128 KB), as in `birddog/ftp.py`. It is only
+trusted while it starts with the row's current size. `reconcile`:
+
+- puts a checked file back on the queue when a same-size document has not been
+  compared with it yet, or its links disagree with the fingerprints;
+- links a file to every same-size document with the same fingerprint (one file
+  can back a Commons and a Wikisource document);
+- removes a link only when every comparison for that file was made;
+- marks the file `match_checked` when it has no same-size document, could not be
+  read (`fp_error`), or every comparison was made.
+
+`fp_error` (migration 014) records a file the SFTP server refused, or a wiki
+file that is missing or changed size, so it is not retried on every run. The
+`jewishgen_sftp` transform clears it when the file changes.
+
+**Without `SFTP_PASSWORD`** (today), `ftp_batches` raises a skip and
+`ftp_fingerprint` is skipped with it. `doc_batches` and `reconcile` have
+`trigger_rule: none_failed`, so they still run on the fingerprints already
+stored (3384 FTP files carry one from the NocoDB import). The run ends green.
+
+**To turn on SFTP reading** (plan it with the owner, it recreates containers):
+
+1. Add `SFTP_PASSWORD=...` to `deploy/.env` on the data box. The Airflow
+   services read that file (`env_file: .env`), so no compose change is needed.
+   Host, port and user come from `resources/ftp_config.json`
+   (`sftp.jewishgen.org`, 22, `jbrandt`); `SFTP_HOST`, `SFTP_PORT`, `SFTP_USER`
+   override them.
+2. Recreate the Airflow containers so they get the variable.
+3. Optionally set `enabled: true` in `dags/sources/jewishgen_sftp/source.yml`
+   so the listing stays current. Its successful run triggers `match_ftp_documents`.
+4. Unpause `match_ftp_documents`. Check the `ftp_fingerprint` logs for
+   `connection lost` or `keeps dropping`: JewishGen rate-limits logins.
 
 ## One-off migrations (manual)
 

@@ -35,13 +35,13 @@ into the `birddog` database, as `birddog` (`deploy/ui/setup.sh`). They are not o
 |---|---|---|
 | `core.archive_root` | `title` (PK), `label`, `description` | Registry of archive roots (the `Архів:` pages at top level). The web app can write it. |
 | `core.page` | `id`, `url` (unique), `title`, `parent_id` (self), `label`, `root_label`, `level` (archive, fond, opus, ...), `native_description` (uk), `description_en`, `years`, `wiki_timestamp`, `availability` (linked, unlinked, redlinked, error), `stale`, `last_birddog_update` | `stale` default true; the refresh DAG clears it. Legacy import fields: `comments`, `reference_date`, `change_date`, `import_message`, `last_imported`. |
-| `core.document` | `id`, `url` (unique), `title`, `domain`, `filename`, `wiki_timestamp`, `byte_size`, `mimetype`, `page_count`, `sha1_hash`, `content_fp`, `availability`, `lookup_status`, `location_status` (pending, found, none, failed), `dupes_checked`, `anomaly`, `description`, `process_code`, `doc_type[]`, `save_status`, `doc_scope`, `language` | `content_fp` is the fingerprint used for FTP matching. `old_*` columns keep the legacy codes as imported. |
+| `core.document` | `id`, `url` (unique), `title`, `domain`, `filename`, `wiki_timestamp`, `byte_size`, `mimetype`, `page_count`, `sha1_hash`, `content_fp`, `availability`, `lookup_status`, `location_status` (pending, found, none, failed), `dupes_checked`, `anomaly`, `description`, `process_code`, `doc_type[]`, `save_status`, `doc_scope`, `language` | `content_fp` is the fingerprint used for FTP matching; `fp_error` (014) says why one could not be taken. `old_*` columns keep the legacy codes as imported. |
 | `core.page_document` | `page_id`, `document_id` (PK both) | Many-to-many. Use it instead of copying page fields onto documents. |
 | `core.document_duplicate` | `prevailing_id`, `duplicate_id` | A duplicate points at the prevailing document. |
 | `core.location` | `location_id` (PK), `modern_location_name`, `alternate_names`, `c1900_district` ... `c2000_province` | Administrative hierarchy by census year. |
 | `core.document_location` | `document_id`, `location_id` | Document to location links. |
 | `core.translation` | `source_hash` (PK, sha256 of the text), `source_text`, `translated_text`, `target_lang` | Translation cache shared by all pages, one row per distinct text. |
-| `core.ftp_entry` | `path` (PK), `filename`, `folder`, `suffix`, `type` (dir, file), `size`, `mtime`, `depth`, `content_fp`, `match_checked` | Listing of the FTP/SFTP tree (today: NocoDB import; the JewishGen source when enabled). |
+| `core.ftp_entry` | `path` (PK), `filename`, `folder`, `suffix`, `type` (dir, file), `size`, `mtime`, `depth`, `content_fp`, `match_checked`, `fp_error` (014) | Listing of the FTP/SFTP tree (today: NocoDB import; the JewishGen source when enabled). |
 | `core.ftp_document` | `ftp_path`, `document_id` | Matches between FTP files and documents. |
 
 ### Work-queue views
@@ -53,9 +53,9 @@ Each view is a queue. A DAG or a curator works through the rows it returns.
 | `core.v_pages_stale` | pages with `stale` | `refresh_pages` DAG |
 | `core.v_untranslated` | pages with Ukrainian text and no `description_en` | `translate` DAG and `app_translate_page` |
 | `core.v_docs_no_meta` | documents with no sha1 from wiki-hosted or Commons domains, not failed | `refresh_doc_metadata` DAG (defined in 002, redefined in 003) |
-| `core.v_docs_need_dupe_check` | documents with sha1 not yet dupe-checked | **no consumer found** |
+| `core.v_docs_need_dupe_check` | documents with sha1 not yet dupe-checked | `link_duplicates` DAG |
 | `core.v_docs_no_location` | documents with `location_status = 'pending'` | **no consumer found**; set by `app_refresh_page` with `update_locations` |
-| `core.v_ftp_need_match` | FTP files not yet matched | **no consumer found** |
+| `core.v_ftp_need_match` | FTP files not yet matched | `match_ftp_documents` DAG (its `reconcile` step also puts checked files back) |
 
 ## app
 
