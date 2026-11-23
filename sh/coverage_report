@@ -1,7 +1,10 @@
 #!/bin/bash
+# Usage: sh/coverage_report [pytest args]   (from the repo root)
+# Runs the tests under coverage with pytest (several test files need pytest;
+# plain unittest discovery fails on them) and opens the HTML report.
+set -euo pipefail
 coverage erase
-coverage run -m unittest
+coverage run -m pytest test "$@" || echo "some tests failed; report follows" >&2
 coverage report
 coverage html
-open htmlcov/index.html
-
+if command -v open >/dev/null; then open htmlcov/index.html; else echo "report: htmlcov/index.html"; fi
