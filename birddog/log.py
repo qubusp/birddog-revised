@@ -10,12 +10,15 @@ from collections import deque
 from datetime import datetime, UTC, timezone
 import sqlite3
 
-import boto3
-from boto3.dynamodb.conditions import Key
-
 import pandas as pd
 
-from birddog.env import detect_environment
+from birddog.env import detect_environment, store_backend
+
+# boto3 is only needed by the DynamoDB loggers (old AWS runtime), so it is
+# imported on first use
+def Key(name):
+    from boto3.dynamodb.conditions import Key as _Key
+    return _Key(name)
 
 _SQLLITE_LOG_PATH = ".cache/logs.db"
 
@@ -83,10 +86,11 @@ class EventLogger:
     @staticmethod
     def get_logger():
         if not EventLogger._logger:
-            if detect_environment() == "aws":
-                EventLogger._logger = DynamoDBEventLogger()
-            else:
-                EventLogger._logger = SQLLiteEventLogger()
+            EventLogger._logger = {
+                "postgres": lambda: PostgresEventLogger(),
+                "dynamodb": lambda: DynamoDBEventLogger(),
+                "sqlite": lambda: SQLLiteEventLogger(),
+            }[store_backend()]()
         return EventLogger._logger
 
     def log_request(self, user, method, path, status, duration):
@@ -171,13 +175,11 @@ class SQLLiteEventLogger(EventLogger):
 
 # DYNAMODB-BASED PERSISTENT EVENT LOGGING ------------------------
 
-import boto3
-from boto3.dynamodb.conditions import Key
-
 _DYNAMODB_TABLE_NAME = "birddog_request_logs"
 
 class DynamoDBEventLogger(EventLogger):
     def __init__(self, table_name=_DYNAMODB_TABLE_NAME):
+        import boto3
         self._ensure_dynamodb_log_table()
         self._table = boto3.resource("dynamodb").Table(table_name)
         self._lock = threading.Lock()
@@ -221,6 +223,7 @@ class DynamoDBEventLogger(EventLogger):
         return df
 
     def _ensure_dynamodb_log_table(self, table_name=_DYNAMODB_TABLE_NAME):
+        import boto3
         dynamodb = boto3.client("dynamodb")
 
         # Check if the table exists
@@ -326,10 +329,11 @@ class ServiceLogger:
     @staticmethod
     def get_logger():
         if not ServiceLogger._logger:
-            if detect_environment() == "aws":
-                ServiceLogger._logger = DynamoDBServiceLogger()
-            else:
-                ServiceLogger._logger = SQLLiteServiceLogger()
+            ServiceLogger._logger = {
+                "postgres": lambda: PostgresServiceLogger(),
+                "dynamodb": lambda: DynamoDBServiceLogger(),
+                "sqlite": lambda: SQLLiteServiceLogger(),
+            }[store_backend()]()
         return ServiceLogger._logger
 
     def log_service_call(self, resouce, method, path, size, duration):
@@ -478,6 +482,7 @@ _DYNAMODB_SERVICE_TABLE_NAME = "birddog_service_logs"
 
 class DynamoDBServiceLogger(ServiceLogger):
     def __init__(self, table_name=_DYNAMODB_SERVICE_TABLE_NAME):
+        import boto3
         super().__init__()
         self._ensure_dynamodb_log_table(table_name)
         self._table = boto3.resource("dynamodb").Table(table_name)
@@ -547,6 +552,7 @@ class DynamoDBServiceLogger(ServiceLogger):
         return df
 
     def _ensure_dynamodb_log_table(self, table_name=_DYNAMODB_SERVICE_TABLE_NAME):
+        import boto3
         dynamodb = boto3.client("dynamodb")
         existing_tables = dynamodb.list_tables()["TableNames"]
         if table_name in existing_tables:
@@ -598,6 +604,74 @@ class DynamoDBServiceLogger(ServiceLogger):
                 break
 
         return deleted
+
+# POSTGRES-BASED LOGGING (app.request_log / app.service_log) ------------------------
+
+def _pg_logs_frame(rows, columns):
+    df = pd.DataFrame(rows, columns=columns)
+    if not df.empty:
+        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    return df
+
+class PostgresEventLogger(EventLogger):
+    # writes are best-effort: a database hiccup must not fail the request
+    # being logged
+
+    def log_request(self, user, method, path, status, duration):
+        from birddog import app_db
+        try:
+            with app_db.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO app.request_log (user_id, method, path, status, duration_ms) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (user, method, path, int(status), int(duration * 1000)))
+        except Exception as err:
+            logging.getLogger(__name__).warning(f"request log write failed: {err}")
+
+    def load_logs(self, start_time, end_time):
+        from birddog import app_db
+        with app_db.cursor() as cur:
+            cur.execute(
+                'SELECT id, ts, user_id, method, path, status, duration_ms FROM app.request_log '
+                'WHERE ts BETWEEN %s AND %s ORDER BY ts',
+                (_iso_utc(start_time), _iso_utc(end_time)))
+            rows = cur.fetchall()
+        return _pg_logs_frame(rows, ["id", "timestamp", "user", "method", "path", "status", "duration"])
+
+    def truncate(self, cutoff):
+        from birddog import app_db
+        with app_db.cursor() as cur:
+            cur.execute("DELETE FROM app.request_log WHERE ts < %s", (_iso_utc(cutoff),))
+            return cur.rowcount
+
+class PostgresServiceLogger(ServiceLogger):
+
+    def log_service_call(self, resource, method, path, size, duration):
+        from birddog import app_db
+        try:
+            with app_db.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO app.service_log (resource, method, path, size, duration_ms) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (resource, method, path, int(size or 0), int((duration or 0) * 1000)))
+        except Exception as err:
+            logging.getLogger(__name__).warning(f"service log write failed: {err}")
+
+    def load_logs(self, start_time, end_time):
+        from birddog import app_db
+        with app_db.cursor() as cur:
+            cur.execute(
+                'SELECT id, ts, resource, method, path, size, duration_ms FROM app.service_log '
+                'WHERE ts BETWEEN %s AND %s ORDER BY ts',
+                (_iso_utc(start_time), _iso_utc(end_time)))
+            rows = cur.fetchall()
+        return _pg_logs_frame(rows, ["id", "timestamp", "resource", "method", "path", "size", "duration"])
+
+    def truncate(self, cutoff):
+        from birddog import app_db
+        with app_db.cursor() as cur:
+            cur.execute("DELETE FROM app.service_log WHERE ts < %s", (_iso_utc(cutoff),))
+            return cur.rowcount
 
 # SERVICE CALL CONTEXT MANAGER ------------------------------
 

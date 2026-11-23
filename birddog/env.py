@@ -28,3 +28,29 @@ def env_table_name(name):
     CLOUD_STAGE. Evaluated at call time so a notebook that sets the variable
     before constructing a store gets the matching table."""
     return name + _TABLE_SUFFIX_BY_NOCODB_ENV.get(os.environ.get("BIRDDOG_NOCODB_ENV", ""), "")
+
+def base_table_name(name):
+    """Inverse of env_table_name: strip a per-base suffix. On the Postgres stack
+    each base has its own database, so stores there use the plain name."""
+    for suffix in _TABLE_SUFFIX_BY_NOCODB_ENV.values():
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
+
+_STORE_BACKENDS = ("postgres", "dynamodb", "sqlite")
+
+def store_backend():
+    """Where the app keeps its own state (accounts, watchlists, preferences,
+    key-value stores, queues, request/service logs).
+
+    BIRDDOG_STORE_BACKEND (postgres | dynamodb | sqlite) wins when set;
+    otherwise Postgres when BIRDDOG_DATABASE_URL is set (the new stack),
+    DynamoDB on AWS, SQLite locally."""
+    backend = os.environ.get("BIRDDOG_STORE_BACKEND", "").strip().lower()
+    if backend:
+        if backend not in _STORE_BACKENDS:
+            raise ValueError(f"BIRDDOG_STORE_BACKEND must be one of {', '.join(_STORE_BACKENDS)}, got {backend!r}")
+        return backend
+    if os.environ.get("BIRDDOG_DATABASE_URL"):
+        return "postgres"
+    return "dynamodb" if detect_environment() == "aws" else "sqlite"

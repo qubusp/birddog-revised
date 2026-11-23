@@ -10,7 +10,21 @@ _logger = get_logger()
 
 _cache_lock = Lock() # could be overkill?
 
-USE_LOCAL_FILESYSTEM = os.getenv("BIRDDOG_USE_LOCAL_CACHE", False) in ("true", "True", "1")
+from birddog.env import store_backend
+
+def _use_local_filesystem():
+    # BIRDDOG_CACHE_BACKEND (local | s3) wins; BIRDDOG_USE_LOCAL_CACHE is the
+    # older switch. The Postgres stack has no S3, so it defaults to local.
+    backend = os.getenv("BIRDDOG_CACHE_BACKEND", "").strip().lower()
+    if backend:
+        if backend not in ("local", "s3"):
+            raise ValueError(f"BIRDDOG_CACHE_BACKEND must be local or s3, got {backend!r}")
+        return backend == "local"
+    if os.getenv("BIRDDOG_USE_LOCAL_CACHE", False) in ("true", "True", "1"):
+        return True
+    return store_backend() == "postgres"
+
+USE_LOCAL_FILESYSTEM = _use_local_filesystem()
 
 class CacheMissError(Exception):
     """Exception raised on cache miss.
@@ -24,7 +38,7 @@ class CacheMissError(Exception):
 
 if USE_LOCAL_FILESYSTEM:
 
-    CACHE_DIR       = Path(__file__).resolve().parent.parent / '.cache'
+    CACHE_DIR       = Path(os.getenv('BIRDDOG_CACHE_DIR') or Path(__file__).resolve().parent.parent / '.cache')
     _logger.info(f'Using local folder {CACHE_DIR} for storage.')
 
     def _cache_path(object_path):

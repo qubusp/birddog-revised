@@ -7,14 +7,35 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from birddog import watcher
 from birddog.wiki import archive_root, canonicalize_title
-from birddog.cache import save_cached_object
+from birddog.cache import save_cached_object, load_cached_object, CacheMissError
 from birddog.store import KeyValueStore
+from birddog.env import store_backend
 from birddog.utility import utc_now_dt, to_utc_format
 
 from birddog.log import get_logger
 _logger = get_logger()
 
 _kv_store = KeyValueStore()
+
+# On the Postgres stack accounts, watchlists and preferences live in their own
+# app.* tables (birddog/user_store.py) instead of the object cache + KV store.
+# None means the legacy home.
+_pg_store = None
+if store_backend() == "postgres":
+    from birddog.user_store import PostgresUserStore
+    _pg_store = PostgresUserStore()
+
+_USERS_PATH = "users"
+
+def load_user_record(email, path=_USERS_PATH):
+    """The stored account dict ({"name", "password", "role", ...}) for
+    User.from_dict(), or None if there is no such account."""
+    if _pg_store is not None:
+        return _pg_store.load_user(email)
+    try:
+        return load_cached_object(f'{path}/{email}.json')
+    except (CacheMissError, KeyError):
+        return None
 
 # ---------------------------------------------------------------------
 # WATCHLIST MANAGEMENT
@@ -35,6 +56,8 @@ def _watchlist_namespace(email):
 _MIGRATION_MARKER_KEY = "__migrated__"
 
 def _is_watchlist_migrated(email):
+    if _pg_store is not None:
+        return True  # app.watch only ever holds title-keyed entries
     try:
         _kv_store.get(_watchlist_namespace(email), _MIGRATION_MARKER_KEY)
         return True
@@ -84,20 +107,24 @@ def _parse_watch_item(raw):
     return item
 
 def _save_watch_item(email, title, item):
+    if _pg_store is not None:
+        _pg_store.put_watch(email, title, item)
+        return
     _kv_store.insert(_watchlist_namespace(email), title, json.dumps(item))
 
-def _get_watchlist(email):
-    # lazily upgrade legacy "archive-subarchive"-keyed entries (no "include"
-    # field) to title-keyed entries, coarsened to the owning archive and
-    # merged with any sibling subarchive entries (or a pre-existing
-    # title-keyed entry) for the same archive
-    ns = _watchlist_namespace(email)
-    raw = {
-        k: _parse_watch_item(v)
-        for k, v in _kv_store.get_all(ns)
-        if k != _MIGRATION_MARKER_KEY
-    }
+def _remove_watch_item(email, title):
+    if _pg_store is not None:
+        _pg_store.remove_watch(email, title)
+        return
+    _kv_store.remove(_watchlist_namespace(email), title)
 
+def coarsen_watch_items(raw):
+    """raw: {kv key: parsed item}. Upgrades legacy "archive-subarchive"-keyed
+    entries (no "include" field) to title-keyed entries, coarsened to the
+    owning archive and merged with any sibling subarchive entries (or a
+    pre-existing title-keyed entry) for the same archive.
+
+    Returns (watchlist by title, legacy keys consumed, titles changed)."""
     result = {}
     legacy_keys = []
     changed_titles = set()
@@ -116,6 +143,19 @@ def _get_watchlist(email):
             changed_titles.add(title)
         else:
             result[title] = item
+    return result, legacy_keys, changed_titles
+
+def _get_watchlist(email):
+    # lazily upgrade legacy entries (see coarsen_watch_items)
+    if _pg_store is not None:
+        return _pg_store.watchlist(email)
+    ns = _watchlist_namespace(email)
+    raw = {
+        k: _parse_watch_item(v)
+        for k, v in _kv_store.get_all(ns)
+        if k != _MIGRATION_MARKER_KEY
+    }
+    result, legacy_keys, changed_titles = coarsen_watch_items(raw)
 
     for key in legacy_keys:
         _kv_store.remove(ns, key)
@@ -129,6 +169,8 @@ def _get_watch_item(email, title):
     # single-key fast path once this user's namespace is known to be free of
     # legacy-format entries; falls back to the full migration sweep exactly
     # once per account (see _get_watchlist), never again after that
+    if _pg_store is not None:
+        return _pg_store.get_watch(email, title)
     if not _is_watchlist_migrated(email):
         return _get_watchlist(email)[title]
     return _parse_watch_item(_kv_store.get(_watchlist_namespace(email), title))
@@ -142,6 +184,22 @@ def _write_legacy_watch_item(email, key, cutoff, last_checked=None):
     _kv_store.insert(_watchlist_namespace(email), key, json.dumps(payload))
 
 def _load_watchlist(email, watchlist):
+    if _pg_store is not None:
+        # no legacy sweep on read here, so coarsen up front and merge with
+        # whatever is already watched
+        raw = {}
+        for key, item in watchlist.items():
+            parsed = {"cutoff_date": _to_utc(item.get("cutoff_date"))}
+            if item.get("last_checked_date"):
+                parsed["last_checked_date"] = _to_utc(item["last_checked_date"])
+            raw[key] = parsed
+        coarse, _, _ = coarsen_watch_items(raw)
+        existing = _pg_store.watchlist(email)
+        for title, item in coarse.items():
+            if title in existing:
+                item = _merge_watch_items(existing[title], item)
+            _pg_store.put_watch(email, title, item)
+        return
     for key, item in watchlist.items():
         _write_legacy_watch_item(
             email,
@@ -156,10 +214,15 @@ def _preferences_namespace(email):
     return f"pref:{email}"
 
 def _set_preference(email, key, value):
+    if _pg_store is not None:
+        _pg_store.set_preference(email, key, value)
+        return
     _kv_store.insert(_preferences_namespace(email), key, json.dumps(value))
 
 def _get_preference(email, key, default_value=None):
     try:
+        if _pg_store is not None:
+            return _pg_store.get_preference(email, key)
         return json.loads(_kv_store.get(_preferences_namespace(email), key))
     except KeyError:
         return default_value
@@ -205,6 +268,8 @@ class User:
 
         # one-time transfer of watchlist to kv store
         with self._lock:
+            if _pg_store is not None and (isinstance(watchlist, dict) or isinstance(preferences, dict)):
+                self.save()  # app.watch/app.user_preference rows need the account row
             if isinstance(watchlist, dict):
                 _load_watchlist(email, watchlist)
                 self.save()
@@ -268,7 +333,7 @@ class User:
         with self._lock:
             if not _is_watchlist_migrated(self.email):
                 _get_watchlist(self.email)  # fold in any un-migrated sibling entries first
-            _kv_store.remove(_watchlist_namespace(self.email), title)
+            _remove_watch_item(self.email, title)
 
         # Remove associated watcher state (outside lock)
         watcher.remove_watcher(self.email, title)
@@ -337,7 +402,7 @@ class User:
                 # linger pointing at a watch that no longer exists.
                 if not _is_watchlist_migrated(self.email):
                     _get_watchlist(self.email)  # fold in any un-migrated sibling entries first
-                _kv_store.remove(_watchlist_namespace(self.email), title)
+                _remove_watch_item(self.email, title)
             else:
                 unresolved = self._recheck_after_resolve(title, unresolved)
 
@@ -363,7 +428,7 @@ class User:
                 # see resolve_item() above -- same watch-retirement case
                 if not _is_watchlist_migrated(self.email):
                     _get_watchlist(self.email)
-                _kv_store.remove(_watchlist_namespace(self.email), title)
+                _remove_watch_item(self.email, title)
             else:
                 unresolved = self._recheck_after_resolve(title, unresolved)
 
@@ -404,7 +469,10 @@ class User:
 
     def save(self):
         with self._lock:
-            save_cached_object(self.to_dict(), f'users/{self.email}.json')
+            if _pg_store is not None:
+                _pg_store.save_user(self.email, self.to_dict())
+                return
+            save_cached_object(self.to_dict(), f'{_USERS_PATH}/{self.email}.json')
 
     def to_dict(self):
         return {
