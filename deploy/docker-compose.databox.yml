@@ -13,6 +13,22 @@ services:
   saltcorn: {profiles: [apps]}
   birddog-web: {profiles: [apps]}
 
+  # the UI apps moved off this box, so Postgres and the scheduler get the room
+  postgres:
+    mem_limit: 3g
+    command:
+      - postgres
+      - -c
+      - shared_buffers=768MB
+      - -c
+      - effective_cache_size=2GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=256MB
+  airflow-scheduler:
+    mem_limit: 2560m
+
   caddy:
     depends_on: !reset [airflow-apiserver]
     volumes: !override
