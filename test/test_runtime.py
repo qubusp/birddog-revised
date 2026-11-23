@@ -156,6 +156,17 @@ class PageUpdateManagerHeartbeatMoveTests(unittest.TestCase):
 
 
 class RuntimeDatabaseUpdateStatusTests(unittest.TestCase):
+    """Legacy (NocoDB) mode: no Postgres, in-process sync managers."""
+    def setUp(self):
+        import birddog.runtime as runtime_module
+        patchers = [
+            mock.patch.object(runtime_module, "_ENABLE_DB_SYNC", True),
+            mock.patch.dict(os.environ, {"BIRDDOG_DATABASE_URL": ""}),
+        ]
+        for patcher in patchers:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def make_runtime(self, with_locations=True):
         runtime = Runtime.__new__(Runtime)
         runtime._database_update_manager = mock.MagicMock()

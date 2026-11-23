@@ -58,6 +58,11 @@ def _entry_hit(entry, entry_id):
 
 _history_lru = HistoryLRU()
 
+def page_history(title, cutoff_date):
+    """Revision history of a wiki page from cutoff_date on (newest first),
+    through the same cache Page.history() uses, without loading the page."""
+    return _history_lru.lookup_by_cutoff(canonicalize_title(title), cutoff_date=cutoff_date)
+
 class Page:
     """Base clase for all page types on the archive."""
     def __init__(self, title, runtime=None):
