@@ -31,7 +31,7 @@ the UI can't get around them:
 |---|---|
 | `core.page`, `core.document` (curation fields: process_code, doc_type, save_status, doc_structure, doc_scope, language, processor, pages_processed, when_transcribed, comments, anomaly, anomaly_comment, ...), `core.location`, `core.archive_root` | read / insert / update / delete |
 | link tables `core.page_document`, `core.document_location`, `core.document_duplicate` | read / insert / update / delete. Mathesar shows them as linked records on a record's page |
-| `core.translation`, `core.ftp_entry`, `core.ftp_document`, `core.v_*` work-queue views | read only |
+| `core.translation`, `core.ftp_entry`, `core.ftp_document`, `core.v_*` work-queue views, `views.*` curator views | read only |
 | `app.*` (accounts, watches, alert state), `raw.*` | no access. The schemas show in the list, but opening them fails with "permission denied" |
 
 The grants are on whole tables, so the pipeline-owned columns of
@@ -70,3 +70,73 @@ Don't add any other Postgres role to Mathesar. It would bypass the restrictions 
 - `.env` keys: `BIRDDOG_UI_DB_PASSWORD`, `MATHESAR_DB_PASSWORD`,
   `MATHESAR_SECRET_KEY`, `MATHESAR_ADMIN_USER`, `MATHESAR_ADMIN_PASSWORD`.
   `sh/deploy` appends any that are missing.
+
+## Saved views (recreated from NocoDB)
+
+The curator-facing grid views of the NocoDB STAGE base are recreated as Postgres
+views in schema **`views`** (`db/migrations/006_curator_views.sql`). They show up in
+Mathesar under the `views` schema, and any SQL tool can query them. The full NocoDB
+export (31 views: columns, order, visibility, groupings, lock and personal flags, row
+counts, inferred filters and sorts with the evidence for each) is in
+`ui/nocodb_views.json`.
+
+**Views are read-only in Mathesar 0.12.** Mathesar edits a row through its table's
+primary key (`msar.get_pk_column` reads `pg_constraint`), and a Postgres view can't
+have one. A `records.patch` on a view row fails with `NullValueNotAllowed`. Mathesar
+also has no saved filters on tables: its table metadata stores only column order and
+the record summary. It does keep a table's filter, sort and hidden columns in the page
+URL (`?q=`). `ui/views.sh` (run by `ui/setup.sh`) builds that URL for every view whose
+filter uses only its own table's columns. It appends the URL to the view's description
+as **"Editable version"**. To find records, use the view. To edit them, open the
+editable version, or open the record in its `core` table by the `id` / `location_id`
+shown in the first columns.
+
+| NocoDB table / view | Postgres view | Filter | Sort (apply in the UI) | Editable version |
+|---|---|---|---|---|
+| Pages / All | `views.pages__all` | none | id | yes |
+| Pages / Recently Updated | `views.pages__recently_updated` | last_birddog_update or last_imported within 1 day | unknown | no (relative date) |
+| Pages / CDIAK | `views.pages__cdiak` | root_label = CDIAK | seq_label | yes |
+| Pages / Juliana test | `views.pages__juliana_test` | root_label = DACHVO and level in (archive, fond, opus) | label | yes |
+| Pages / Import Messages | `views.pages__import_messages` | import_message not blank | UpdatedAt desc, so use last_imported desc | yes |
+| Documents / All | `views.documents__all` | none | id | yes (without page fields) |
+| Documents / Recently Updated | `views.documents__recently_updated` | as for Pages | unknown | no |
+| Documents / Multi-Owner | `views.documents__multi_owner` | num_owners > 1 | id | no (link count) |
+| Documents / Orphans | `views.documents__orphans` | num_owners = 0 | id | no |
+| Documents / Has Duplicates | `views.documents__has_duplicates` | num_duplicates > 0 | id | no |
+| Documents / CDIAK | `views.documents__cdiak` | none (NocoDB had none either) | label | yes (unsorted) |
+| FTP Site / All | `views.ftp_site__all` | none | first_seen | n/a (read-only table) |
+| Locations / Locations | `views.locations__locations` | none | location_id | yes |
+| Locations / Has Documents | `views.locations__has_documents` | num_documents > 0 | location_id | no |
+
+`views._page_base` and `views._document_base` are helpers. They add the link lookups
+to `core.page` / `core.document`: the parent title, child count, linked document
+titles, owning pages, duplicates, duplicate_of, FTP items, locations and their counts,
+plus the fields copied from a document's owning page.
+
+Not recreated:
+- Pipeline queues ("BD:*"). Untranslated, Missing Metadata, Need Dupe Check, Need
+  Locations and Need Match Check already exist as `core.v_*`. BD:WDT, BD:Need Page
+  Lookups and BD:Directories are internal loop cursors.
+- Personal views (Jon Debug on Pages and Documents, Has Wikisource Dup) and the
+  developer "Alex Debug" / "debug" views.
+- Documents / Juliana test. It was empty at export, so its filter couldn't be
+  inferred (see below).
+
+NocoDB features that can't be reproduced:
+- **Exact filter and sort definitions.** The import token lacks NocoDB's
+  `filterList`/`sortList` permissions (HTTP 403). Filters and sorts were inferred from
+  record membership and order through the data API (`nocodb_views.json` →
+  `inference_evidence`). Views that were empty at export (Recently Updated, Orphans,
+  Has Duplicates, Has Documents) follow their name and description, so they're
+  unverified. Re-export with a token that has full meta permissions to confirm them.
+- **Sort order.** Mathesar ignores a view's ORDER BY, so each view's sort is in its
+  description.
+- **Groupings.** Only the skipped debug views were grouped.
+- **CreatedAt / UpdatedAt.** Core has no row-modified timestamp, so "Recently
+  Updated" uses pipeline and import timestamps and misses curator edits.
+- **Fields core doesn't store.** On Documents: thumb_*, save_pending,
+  native_description. On Locations: region, jewish_population, notes, latitude,
+  longitude, *_town, *_country.
+- **Link fields.** They show as newline-joined titles, not as clickable chips.
+  Pages.children shows as a count, because archive pages have thousands of children.
+- **Per-view lock and personal flags.** Every curator sees every view.

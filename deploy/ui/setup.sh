@@ -59,3 +59,6 @@ UserDatabaseRoleMap.objects.update_or_create(
 )
 print("birddog database (id %d) connected as birddog_ui" % database.id)
 PY
+
+# editable-twin links in the descriptions of the curator views (views.*)
+bash ui/views.sh
