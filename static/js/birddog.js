@@ -436,7 +436,7 @@ function init_tab_scroll_persistence() {
 async function load_page_by_title(page_title, compare=null) {
     try {
         save_scroll_position();
-        var url = `/page?title=${page_title}`;
+        var url = `/page?title=${encodeURIComponent(page_title)}`;
         if (compare != null)
             url += `&compare=${compare}`
         console.log(`Fetching data from: ${url}`);
@@ -2176,6 +2176,136 @@ function toggle_page_desc_icon(btn) {
 // ---------------------------------------------------------------------------
 // APP INITIALIZATION
 
+// ---------------------------------------------------------------------------
+// SEARCH (GET /search: pages and documents, keyword + fuzzy; see core.search())
+
+const SEARCH_LIMIT = 50;
+// ignore responses to searches the user has since replaced
+let search_request_id = 0;
+
+function search_kind_label(hit) {
+    return hit.kind === 'document' ? 'Document' : 'Page';
+}
+
+function search_result_html(hit, index) {
+    // a document opens on its owning wiki page; hits without a wiki page
+    // (archive-website or Drive entries) can only be opened at the source
+    const name = hit.kind === 'page' && hit.label ? hit.label : hit.title;
+    const title_id = `search-hit-${index}`;
+    const heading = hit.page_title
+        ? `<button type="button" class="btn btn-link p-0 search-open search-title fw-semibold" id="${title_id}"
+                   data-title="${escape_attr(hit.page_title)}">${escape_attr(name)}</button>`
+        : `<span class="search-title fw-semibold" id="${title_id}">${escape_attr(name)}</span>`;
+    const original = hit.kind === 'page' && hit.label && hit.label !== hit.title
+        ? `<div class="small text-muted search-title" lang="uk">${escape_attr(hit.title)}</div>` : '';
+    const owner = hit.kind === 'document'
+        ? (hit.page_title
+            ? `<div class="small search-owner">On page ${escape_attr(hit.label || hit.page_title)}</div>`
+            : `<div class="small text-muted search-owner">Not linked from a wiki page</div>`)
+        : '';
+    const snippet = hit.snippet
+        ? `<div class="small search-snippet">${escape_attr(hit.snippet)}</div>` : '';
+    return `
+        <li class="list-group-item d-flex gap-2 align-items-start">
+          <div class="flex-grow-1" style="min-width: 0;">
+            <span class="badge text-bg-${hit.kind === 'document' ? 'secondary' : 'primary'} me-1">${search_kind_label(hit)}</span>
+            ${heading}
+            ${original}
+            ${owner}
+            ${snippet}
+          </div>
+          <a href="${escape_attr(hit.url)}" target="birddog_search_source" rel="noopener" class="btn btn-outline-primary btn-sm flex-shrink-0"
+             title="View source" aria-label="View source (opens a new tab)" aria-describedby="${title_id}">
+            <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
+          </a>
+        </li>`;
+}
+
+function set_search_status(text, kind = null) {
+    const status = document.getElementById('search-status');
+    status.className = 'mb-2' + (kind ? ` text-${kind}` : '');
+    status.textContent = text;
+}
+
+async function run_search(query) {
+    // the button stays enabled while a search runs: a disabled default button
+    // blocks Enter-to-submit, and stale responses are dropped by request id
+    const results = document.getElementById('search-results');
+    query = (query || '').trim();
+    if (!query) {
+        results.innerHTML = '';
+        set_search_status('Type something to search for.', 'danger');
+        return;
+    }
+    const request_id = ++search_request_id;
+    set_search_status('Searching…');
+    results.setAttribute('aria-busy', 'true');
+    try {
+        const response = await fetch(`/search?q=${encodeURIComponent(query)}&limit=${SEARCH_LIMIT}`,
+                                     { headers: { 'Accept': 'application/json' } });
+        if (request_id !== search_request_id) return;
+        if (response.status === 404) {
+            notify_session_expired();
+            return;
+        }
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        const hits = data.results || [];
+        results.innerHTML = hits.map(search_result_html).join('');
+        if (!hits.length) {
+            set_search_status(`No pages or documents match “${query}”.`);
+        } else {
+            const more = hits.length >= SEARCH_LIMIT ? ' (showing the best matches; refine the search for more)' : '';
+            set_search_status(`${hits.length} result${hits.length === 1 ? '' : 's'} for “${query}”${more}.`);
+        }
+    } catch (error) {
+        if (request_id !== search_request_id) return;
+        console.error('Search failed:', error);
+        results.innerHTML = '';
+        set_search_status(`Search failed: ${error.message}`, 'danger');
+    } finally {
+        if (request_id === search_request_id) {
+            results.removeAttribute('aria-busy');
+        }
+    }
+}
+
+async function open_search_result(page_title) {
+    show_tab('nav-browse-tab');
+    await load_page_by_title(page_title);
+    // move focus to the page now shown, so keyboard and screen-reader users
+    // land on what they opened rather than on a hidden tab
+    const heading = document.getElementById('page-title');
+    if (heading && !document.getElementById('browse-page-content').classList.contains('d-none')) {
+        heading.focus({ preventScroll: true });
+    }
+}
+
+function init_search() {
+    const form = document.getElementById('search-form');
+    if (!form) return;   // no database, or not logged in
+    const input = document.getElementById('search-input');
+    form.addEventListener('submit', event => {
+        event.preventDefault();   // Enter in the field submits too
+        run_search(input.value);
+    });
+    document.getElementById('search-results').addEventListener('click', event => {
+        const button = event.target.closest('.search-open');
+        if (button) open_search_result(button.dataset.title);
+    });
+    // focus the field when the tab is opened; on a narrow screen close the
+    // expanded menu first, or the fixed navbar covers the field
+    document.getElementById('nav-search-tab')?.addEventListener('shown.bs.tab', () => {
+        const menu = document.getElementById('navbarNavAltMarkup');
+        if (menu?.classList.contains('show')) {
+            bootstrap.Collapse.getOrCreateInstance(menu, { toggle: false }).hide();
+        }
+        input.focus({ preventScroll: true });
+    });
+}
+
 async function on_loaded() {
     // Login form submit button
     const login = document.getElementById('loginForm');
@@ -2654,6 +2784,7 @@ async function on_loaded() {
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM fully loaded and parsed');
     init_tab_scroll_persistence();
+    init_search();
     on_loaded();
 });
 

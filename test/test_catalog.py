@@ -436,6 +436,32 @@ class TestRoutes(unittest.TestCase):
         self.assertEqual(resp.get_json(), {"query": "ДАЗО 1-1-12", "results": hits})
         search.assert_called_once_with("ДАЗО 1-1-12", limit=5)
 
+    def _home(self):
+        self.user.get_watchlist = lambda: {}
+        self.service.runtime.database_update_enabled = False
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        return resp.get_data(as_text=True)
+
+    def test_home_has_search_box_with_database(self):
+        html = self._home()
+        self.assertIn('id="nav-search-tab"', html)
+        self.assertIn('<label for="search-input"', html)
+        self.assertIn('role="search"', html)
+        self.assertIn('id="search-status" class="mb-2" role="status" aria-live="polite"', html)
+
+    def test_home_has_no_search_box_without_database(self):
+        with patch("birddog.catalog.enabled", return_value=False):
+            html = self._home()
+        self.assertNotIn("nav-search-tab", html)
+        self.assertNotIn("search-input", html)
+
+    def test_home_has_no_search_box_when_logged_out(self):
+        with self.client.session_transaction() as sess:
+            sess.clear()
+        html = self._home()
+        self.assertNotIn("search-input", html)
+
     def test_search_without_database(self):
         with patch("birddog.catalog.enabled", return_value=False):
             self.assertEqual(self.client.get("/search?q=x").status_code, 503)

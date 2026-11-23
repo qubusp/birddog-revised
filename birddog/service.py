@@ -218,6 +218,7 @@ def home():
         landing_tab=landing_tab,
         runtime_state=runtime.state,
         database_available=runtime.database_update_enabled,
+        search_available=catalog.enabled(),
         signup_open=_signup_open(),
         debug=app.debug,
         stage=os.environ.get("BIRDDOG_NOCODB_ENV") == "CLOUD_STAGE")
