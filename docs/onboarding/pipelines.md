@@ -33,6 +33,47 @@ Default pool `wiki_api` (3 slots, shared with every DAG that calls MediaWiki),
 |---|---|---|---|
 | `translate` | cron `0 5 * * *` | Up to 5000 untranslated page texts from `core.v_untranslated`, in batches of 50 (at most 2 batches running). Fills `core.page.description_en`; each distinct text is translated once and cached in `core.translation`. | Needs `BIRDDOG_USE_GOOGLE_CLOUD_TRANSLATE=true` and `GOOGLE_TRANSLATE_API_KEY` in the Airflow environment. Without them the task raises `TranslationDisabledError`. Not in `.env.example` or compose today. |
 
+## Location finder (`dags/yaml/locations.yml`)
+
+| DAG | Trigger | What it does | Assets |
+|---|---|---|---|
+| `locate_documents` | cron `30 * * * *`, or `core/v_docs_no_location` (emitted by `app_refresh_page`) | `batches` takes up to 300 documents (param `limit`) from `core.v_docs_no_location`, oldest id first, in batches of 50. `locate` (mapped, pool `llm_api`) runs the finder in `birddog/locations/` over each batch, 10 documents per LLM call, and writes `core.document_location` and `location_status` (`found`, `none`, `failed`) after each call. | in: `core/v_docs_no_location` |
+
+Code: `birddog/dag_tasks_locations.py`, `birddog/locations/pg_store.py`. The
+extraction and matching logic is the legacy `LocationUpdateManager`'s, reading
+`core.*` instead of NocoDB.
+
+**To enable it** (it is paused, and skips while the key is missing):
+
+1. Put `GROQ_LOCATION_KEY=<key>` (console.groq.com) in the data box's
+   `deploy/.env`. The Airflow containers read `.env` only when created, so the
+   key reaches the tasks after `docker compose up -d` recreates `airflow-*`.
+   That restart needs the owner's agreement.
+2. Create the pool: `airflow pools set llm_api 1 'LLM API callers (location extraction)'`.
+   `airflow-init` does this on its next run. Without the pool, `locate`
+   tasks wait in `scheduled` forever; `batches` runs in `default_pool`.
+3. Unpause `locate_documents`.
+
+Behaviour:
+
+- **No key**: both tasks raise a skip; the run succeeds with skipped tasks and
+  documents stay `pending`.
+- **Rate limits**: `birddog.fetch` throttles `api.groq.com` and waits out 429s
+  of up to 120 s. A longer one (daily token quota) stops the batch: finished
+  calls are kept, the rest stay `pending` for the next hourly run.
+- **Errors**: a failing call raises, so Airflow retries the task (2 retries,
+  300 s apart; finished documents are not redone). On the last try the call's
+  documents are marked `failed` instead, so one bad document does not block the
+  head of the queue.
+- **Fallbacks** (legacy behaviour): when no place is found, the document gets
+  its archive's city (from `root_label`), if the archive is known; otherwise
+  `none`. A failed or empty result never removes existing links.
+- **Translation**: the finder translates the Cyrillic part of the file title
+  through `core.translation`. With Google translation off (the default here)
+  that part is left out, and the summary counts it as `title_untranslated`.
+- Only English page descriptions (`core.page.description_en`) are used, as in
+  the legacy code.
+
 ## App-triggered DAGs (`dags/yaml/app.yml`)
 
 These are started by the web app through the REST API (`birddog/airflow_jobs.py`).
@@ -40,7 +81,7 @@ They are unpaused on creation. Each takes a `conf` (the rendered `params`).
 
 | DAG | Trigger | Params | What it does |
 |---|---|---|---|
-| `app_refresh_page` | web app (admin: database update) | `title`, `deep` (false), `update_locations` (false) | `page`: `refresh_page` refreshes one page and its children. `subtree`: `refresh_subtree` does nothing unless `deep`; with `deep` it marks the known descendants stale and refreshes them in passes of 20, up to 20 000 pages. With `update_locations`, documents of the page (or subtree) are set to `location_status = 'pending'`. Pool `wiki_api`; `max_active_runs: 4`. |
+| `app_refresh_page` | web app (admin: database update) | `title`, `deep` (false), `update_locations` (false) | `page`: `refresh_page` refreshes one page and its children. `subtree`: `refresh_subtree` does nothing unless `deep`; with `deep` it marks the known descendants stale and refreshes them in passes of 20, up to 20 000 pages. With `update_locations`, documents of the page (or subtree) are set to `location_status = 'pending'`, and the `subtree` task emits `core/v_docs_no_location`, which starts `locate_documents`. Pool `wiki_api`; `max_active_runs: 4`. |
 | `app_translate_page` | web app (translate button) | `title` | Translates the page's own text and its children's, using the shared cache. `max_active_runs: 4`. |
 | `app_watchlist_check` | web app ("check now", with both params), or asset `core/page` (every `wiki_changes` run, with both params empty) | `email`, `archive_title` | Checks watch entries against `raw.wiki_change` and stores new alerts. With both params empty it checks every active watch, and one failing watch does not stop the others. `retries: 0`; `max_active_runs: 3`. |
 
@@ -149,8 +190,9 @@ Do this on the server only with the owner's agreement.
 5. Write the function in the matching `birddog/dag_tasks*.py`. Keep it thin and
    put the work in `birddog/pipeline.py` or another module. Return something
    JSON-serialisable, a small summary.
-6. Pool: set `pool: wiki_api` for anything that calls MediaWiki. A new pool needs
-   `airflow pools set` (the `airflow-init` command already sets `wiki_api`).
+6. Pool: set `pool: wiki_api` for anything that calls MediaWiki, `pool: llm_api`
+   for LLM calls. A new pool needs `airflow pools set` (the `airflow-init`
+   command sets `wiki_api` and `llm_api`).
 7. Check it parses: see the DAG test in [local-dev.md](local-dev.md#dag-parse-tests).
 8. Deploy: copy the files to the server. The dag-processor picks up changes, with
    no restart. A new DAG is paused until someone unpauses it.

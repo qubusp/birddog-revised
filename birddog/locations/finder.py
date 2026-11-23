@@ -8,7 +8,6 @@ from typing import Any, cast
 
 import regex
 
-from birddog.database import Database
 from birddog.locations.extractor import LocationExtractor
 from birddog.locations.matcher import LocationMatcher
 from birddog.log import get_logger
@@ -109,15 +108,22 @@ def needs_further_analysis(identified_location: frozenset) -> bool:
 
 
 class FileLocationFinder:
-    def __init__(self, db, provider: str = "groq"):
+    def __init__(self, db, provider: str = "groq", translate=None, extractor=None):
         """
         For provider "modal" the API key is stored in the environment variable "HF_TOKEN";
         for provider "groq" - in the environment variable "GROQ_LOCATION_KEY". For the latter,
         you can get one free at console.groq.com.
+
+        db needs read("Documents"/"Pages", id) and scan_all("Locations") in the
+        NocoDB record shape (birddog.database, or birddog.locations.pg_store for
+        Postgres). translate (default birddog.translate.translation) translates
+        the Cyrillic part of a document title; extractor replaces the LLM
+        client (tests).
         """
         self._logger = get_logger()
         self._db = db
-        self._location_extractor = LocationExtractor(self._logger, provider)
+        self._translate = translate or translation
+        self._location_extractor = extractor or LocationExtractor(self._logger, provider)
 
         # Read the JSON file
         with open("resources/locations.json", "r", encoding="utf-8") as f:
@@ -763,7 +769,7 @@ class FileLocationFinder:
         translated_cyrillic = []
         if cyrillic_space_str:
             # translate the Cyrillic part
-            translated_cyrillic = translation(cyrillic_space_str)
+            translated_cyrillic = self._translate(cyrillic_space_str)
             self._logger.info(f"Title Cyrillic part: {cyrillic_space_str}")
             self._logger.info(f"Translated Cyrillic part: {translated_cyrillic}")
 
@@ -1081,6 +1087,7 @@ def get_doc_record(db, doc_id):
 
 # testing
 if __name__ == "__main__":
+    from birddog.database import Database
     _db = Database()
     finder = FileLocationFinder(_db)
     finder.get_doc_locations_batched([60426], 1, only_smallest_locations=True)

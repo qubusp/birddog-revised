@@ -1,0 +1,50 @@
+# Location finder: infers modern locations (core.location) for archive
+# documents with an LLM (OpenAI-compatible API, Groq by default) and fuzzy
+# matching, writing core.document_location and core.document.location_status.
+# Task code: birddog/dag_tasks_locations.py -> birddog/locations/pg_store.py.
+#
+# To enable: put GROQ_LOCATION_KEY in the data box's deploy/.env (needs an
+# Airflow container recreate to reach the tasks), create the pool
+#   airflow pools set llm_api 1 'LLM API callers (location extraction)'
+# (airflow-init does this on its next run), and unpause the DAG. Without the
+# key every run skips and documents stay pending.
+default:
+  catchup: false
+  max_active_runs: 1
+  default_args:
+    start_date: 2026-11-01
+    retries: 2
+    retry_delay_sec: 300
+  tags: [enrich, locations]
+
+locate_documents:
+  description: Infers locations for documents waiting in core.v_docs_no_location (LLM + fuzzy matching)
+  # hourly, and as soon as app_refresh_page re-queues documents (update_locations)
+  schedule:
+    __type__: airflow.timetables.assets.AssetOrTimeSchedule
+    timetable:
+      __type__: airflow.timetables.trigger.CronTriggerTimetable
+      cron: "30 * * * *"
+      timezone: UTC
+    assets:
+      - __type__: airflow.sdk.Asset
+        uri: postgres://postgres:5432/birddog/core/v_docs_no_location
+  params:
+    # documents per run; empty = birddog.dag_tasks_locations.DOCS_PER_RUN
+    limit: ""
+  tasks:
+    - task_id: batches
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_locations.pending_location_batches
+      limit: "{{ params.limit }}"
+      retries: 0
+    - task_id: locate
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_locations.locate_batch
+      pool: llm_api
+      # a batch can wait out rate limits inside the extractor
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 1
+      expand:
+        doc_ids: +batches

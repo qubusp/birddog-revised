@@ -17,9 +17,10 @@ uk.wikisource.org (the `Архів:` namespace).
 - **FTP/SFTP matching**: a remote tree is listed into `core.ftp_entry` and its
   files are matched to documents by content fingerprint. The source is defined
   (JewishGen SFTP, disabled) but the matcher is not wired into any DAG yet.
-- **Locations**: documents are tagged with archival locations (`core.location`,
-  `core.document_location`). The location code in `birddog/locations/` is still
-  experimental and not run by Airflow.
+- **Locations**: documents are tagged with modern locations (`core.location`,
+  `core.document_location`) by the `locate_documents` DAG, which uses an LLM
+  (Groq) to pull place names out of descriptions. It skips until
+  `GROQ_LOCATION_KEY` is set (see [pipelines.md](pipelines.md#location-finder-dagsyamllocationsyml)).
 - **Translation**: Ukrainian page descriptions are machine-translated to English
   into `core.page.description_en`, cached per text in `core.translation`.
 - **Watchlists**: a user watches an archive, and wiki changes produce alerts the

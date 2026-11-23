@@ -91,8 +91,9 @@ services:
     <<: *airflow-common
     mem_limit: 512m
     entrypoint: /bin/bash
-    # wiki_api pool: caps concurrent MediaWiki callers across all DAGs
-    command: ["-c", "/entrypoint airflow version && /entrypoint airflow pools set wiki_api 3 'MediaWiki API callers'"]
+    # wiki_api pool: caps concurrent MediaWiki callers across all DAGs;
+    # llm_api pool: one location-extraction batch at a time (Groq rate limits)
+    command: ["-c", "/entrypoint airflow version && /entrypoint airflow pools set wiki_api 3 'MediaWiki API callers' && /entrypoint airflow pools set llm_api 1 'LLM API callers (location extraction)'"]
     environment:
       <<: *airflow-env
       _AIRFLOW_DB_MIGRATE: "true"
