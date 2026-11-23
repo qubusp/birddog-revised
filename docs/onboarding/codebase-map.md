@@ -150,6 +150,7 @@ next free number is 017.
 | `011_app_users.sql` | `app.kv`, `app.string_queue`, `app.request_log`, `app.service_log`; adjusts `app.user_account` and `app.watch`. |
 | `012_web_role.sql` | Grants to `birddog_web`: read `core`, CRUD on `app`, write `core.archive_root`, nothing in `raw`. |
 | `013_source_kit.sql` | `raw.source_run`, `raw.source_record`, source-kit comments. |
+| `014_doc_matching.sql` | `fp_error` on `core.document` and `core.ftp_entry`; size and link-table indexes for duplicate and FTP matching. |
 | `016_alert_state.sql` | `app.watch.watcher` (jsonb watcher header) and `app.alert_state.history` (jsonb resolve history), a trigger deriving `modified`, `last_resolved`, `significance`, `sig_span`; grants `core.search()` to `birddog_web`. |
 
 ### Legacy vs Postgres mode

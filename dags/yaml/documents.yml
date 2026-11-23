@@ -1,0 +1,84 @@
+# Document housekeeping: duplicate groups by sha1, and matching JewishGen SFTP
+# files to documents by content fingerprint. Consumers of the queue views
+# core.v_docs_need_dupe_check and core.v_ftp_need_match. Code:
+# birddog/dag_tasks_docs.py -> birddog/doc_matching.py.
+default:
+  catchup: false
+  max_active_runs: 1
+  default_args:
+    start_date: 2026-11-01
+    retries: 1
+    retry_delay_sec: 300
+  tags: [documents]
+
+link_duplicates:
+  description: Links documents with the same sha1 into duplicate groups (one prevailing document per group)
+  # sha1 comes from refresh_doc_metadata (hourly at :45); this follows it
+  schedule:
+    __type__: airflow.timetables.assets.AssetOrTimeSchedule
+    timetable:
+      __type__: airflow.timetables.trigger.CronTriggerTimetable
+      cron: "55 * * * *"
+      timezone: UTC
+    assets:
+      - __type__: airflow.sdk.Asset
+        uri: postgres://postgres:5432/birddog/core/document
+  tasks:
+    - task_id: batches
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_docs.dupe_hash_batches
+    - task_id: link
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_docs.link_duplicate_batch
+      expand:
+        hashes: +batches
+      outlets:
+        - __type__: airflow.sdk.Asset
+          uri: postgres://postgres:5432/birddog/core/document_duplicate
+
+match_ftp_documents:
+  description: Matches JewishGen SFTP files to documents by content fingerprint (SFTP part skips without SFTP_PASSWORD)
+  # every 6 hours, and after each listing run of source_jewishgen_sftp
+  schedule:
+    __type__: airflow.timetables.assets.AssetOrTimeSchedule
+    timetable:
+      __type__: airflow.timetables.trigger.CronTriggerTimetable
+      cron: "40 */6 * * *"
+      timezone: UTC
+    assets:
+      - __type__: airflow.sdk.Asset
+        uri: postgres://postgres:5432/birddog/core/ftp_entry
+  tasks:
+    - task_id: ftp_batches
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_docs.ftp_fingerprint_batches
+    - task_id: ftp_fingerprint
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_docs.fingerprint_ftp_batch
+      # one SFTP connection at a time: JewishGen rate-limits logins
+      max_active_tis_per_dag: 1
+      expand:
+        files: +ftp_batches
+    - task_id: doc_batches
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_docs.doc_fingerprint_batches
+      # runs when the SFTP branch was skipped, using fingerprints already stored
+      trigger_rule: none_failed
+      dependencies: [ftp_fingerprint]
+    - task_id: doc_fingerprint
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_docs.fingerprint_doc_batch
+      pool: wiki_api
+      max_active_tis_per_dag: 2
+      # dag-factory orders tasks by `dependencies` only, not by `+task` references
+      dependencies: [doc_batches]
+      expand:
+        docs: +doc_batches
+    - task_id: reconcile
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_docs.reconcile_ftp_matches
+      trigger_rule: none_failed
+      dependencies: [doc_fingerprint]
+      outlets:
+        - __type__: airflow.sdk.Asset
+          uri: postgres://postgres:5432/birddog/core/ftp_document
