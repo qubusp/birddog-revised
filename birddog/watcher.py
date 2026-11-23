@@ -20,7 +20,7 @@ from birddog.cache import (
     CacheMissError,
     )
 from birddog.store import KeyValueStore
-from birddog.env import env_table_name
+from birddog.env import env_table_name, store_backend
 from birddog.utility import utc_now_dt, to_utc_format
 
 from birddog.log import get_logger
@@ -28,9 +28,19 @@ _logger = get_logger()
 
 # watcher state gets its own table: it's high-volume/high-churn (a row per
 # unresolved/resolved item, across every watch) compared to the small,
-# low-churn account/watchlist-metadata rows in the default "kv" table
+# low-churn account/watchlist-metadata rows in the default "kv" table. On
+# Postgres that is the structured app.watch.watcher / app.alert_state, behind
+# the same key-value interface (birddog/alert_store.py), which also copies in
+# any state still in the generic app.kv store of this name.
 _WATCHER_TABLE_NAME = "bd_watchers"
-_watcher_kv = KeyValueStore(table_name=env_table_name(_WATCHER_TABLE_NAME))
+
+def _make_watcher_store():
+    if store_backend() == "postgres":
+        from birddog.alert_store import AlertStateStore
+        return AlertStateStore(legacy_store=_WATCHER_TABLE_NAME)
+    return KeyValueStore(table_name=env_table_name(_WATCHER_TABLE_NAME))
+
+_watcher_kv = _make_watcher_store()
 
 def _watcher_ns(email):
     return f"w:{email}"
@@ -80,6 +90,8 @@ def get_watcher(email, archive_title):
 # created before this existed is indexed the next time it's touched (every
 # check_watcher() call ends in put_watcher()), so the sweep just doesn't cover it
 # until then -- safe, since an unswept alert simply keeps showing as significant.
+# On Postgres the index is derived from the headers instead (alert_store.py),
+# so it is always complete and these writes are no-ops.
 _ACTIVE_NS = "active"
 
 def _active_key(email, archive_title):

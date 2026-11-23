@@ -105,8 +105,11 @@ class FakeCache:
 
 
 class WatcherTestBase(unittest.TestCase):
+    def make_kv(self):
+        return FakeKVStore()
+
     def setUp(self):
-        self.kv = FakeKVStore()
+        self.kv = self.make_kv()
         self.cache = FakeCache()
         self._patches = [
             mock.patch.object(watcher_mod, "_watcher_kv", self.kv),
@@ -1212,6 +1215,67 @@ class LegacyBlobLazyMigrationTests(WatcherTestBase):
 
         # bounded by the migrated header's last_checked_date, not the fresh cutoff_date passed in
         self.assertEqual(manager.calls[0], ((title,), (), "2025-06-01T00:00:00Z"))
+
+
+# ----------------------------------------------------------------------------
+# The same tests on Postgres (app.watch.watcher / app.alert_state through
+# birddog/alert_store.py), when BIRDDOG_TEST_DATABASE_URL names a scratch
+# database. The structured tables only keep state for watches on a
+# watchlist, so the store used here first creates the account and watch row
+# each write needs (in the app, User.add_to_watchlist() has done that).
+
+class _AutoWatchAlertStore:
+    """AlertStateStore that adds the app.watch row a write needs."""
+
+    def __new__(cls):
+        from birddog.alert_store import AlertStateStore, _parse_namespace
+        from birddog import app_db
+
+        class Store(AlertStateStore):
+            def insert_many(self, namespace, items):
+                kind, email, archive_title = _parse_namespace(namespace)
+                if kind != "active" and items:
+                    titles = list(items) if kind == "w" else [archive_title]
+                    with app_db.cursor() as cur:
+                        cur.execute("""INSERT INTO app.user_account (email, name, password_hash)
+                                       VALUES (%s, 'test', 'x') ON CONFLICT DO NOTHING""", (email,))
+                        for title in titles:
+                            cur.execute("""INSERT INTO app.watch (email, archive_title, include)
+                                           VALUES (%s, %s, ARRAY[%s]) ON CONFLICT DO NOTHING""",
+                                        (email, title, title))
+                return super().insert_many(namespace, items)
+
+        return Store()
+
+
+def _postgres_variant(base, skip=()):
+    def make_kv(self):
+        try:
+            from test.pg_scratch import require_test_database, truncate_app_tables
+        except ImportError:
+            from pg_scratch import require_test_database, truncate_app_tables
+        require_test_database()
+        truncate_app_tables()
+        self.addCleanup(truncate_app_tables)
+        return _AutoWatchAlertStore()
+
+    attrs = {"make_kv": make_kv}
+    for name in skip:
+        attrs[name] = unittest.skip("key-value store specific")(getattr(base, name))
+    return type(f"Postgres{base.__name__}", (base,), attrs)
+
+
+PostgresPrimitivesTests = _postgres_variant(PrimitivesTests)
+# on Postgres the index is derived from the headers, so a failed index write
+# can't hide a watch
+PostgresActiveWatchIndexTests = _postgres_variant(
+    ActiveWatchIndexTests, skip=("test_index_write_failure_does_not_block_put_watcher",))
+PostgresResolveWatcherTests = _postgres_variant(ResolveWatcherTests)
+PostgresResolveManyTests = _postgres_variant(ResolveManyTests)
+PostgresUndoResolveManyTests = _postgres_variant(UndoResolveManyTests)
+PostgresCheckWatcherTests = _postgres_variant(CheckWatcherTests)
+PostgresResolveMovedWatcherTests = _postgres_variant(ResolveMovedWatcherTests)
+PostgresLegacyBlobLazyMigrationTests = _postgres_variant(LegacyBlobLazyMigrationTests)
 
 
 if __name__ == "__main__":
