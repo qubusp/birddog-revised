@@ -59,11 +59,21 @@ CREATE TEMP TABLE page_map AS
     WHERE nc.table_name = 'pages';
 CREATE INDEX ON page_map (nocodb_id);
 
-UPDATE core.page c SET parent_id = parent.id
+-- NocoDB's v3 API doesn't return Pages.parent and cuts children lists off at
+-- 1,000, so parents come from the url path: .../Архів:ДАЧкО/107 -> .../Архів:ДАЧкО
+UPDATE core.page c SET parent_id = p.id
+FROM core.page p
+WHERE c.parent_id IS NULL
+  AND c.url ~ '/wiki/Архів:[^/]+/.'
+  AND p.url = regexp_replace(c.url, '/[^/]+$', '');
+
+-- pages that aren't on the wiki (red links, unlinked, archive-spreadsheet
+-- rows) have nothing to refresh; wiki_changes marks them stale if they appear
+UPDATE core.page c SET stale = false
 FROM nc
-JOIN LATERAL pg_temp.link_ids(nc.f->'parent') AS pid ON true
-JOIN page_map parent ON parent.nocodb_id = pid
-WHERE nc.table_name = 'pages' AND c.url = nc.f->>'url';
+WHERE nc.table_name = 'pages' AND c.url = nc.f->>'url' AND c.stale
+  AND (nc.f->>'availability' IN ('redlinked', 'unlinked')
+       OR nc.f->>'source_type' IS DISTINCT FROM 'wiki');
 
 -- rewind the wiki change feed to the oldest fresh page, so edits made since
 -- each page's last refresh are picked up

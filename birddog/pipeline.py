@@ -186,8 +186,11 @@ VALUES (%(url)s, %(title)s, %(domain)s, %(label)s, %(root_label)s, %(seq_label)s
 ON CONFLICT (url) DO UPDATE SET
     title = EXCLUDED.title, domain = EXCLUDED.domain, label = EXCLUDED.label,
     root_label = EXCLUDED.root_label, seq_label = EXCLUDED.seq_label, level = EXCLUDED.level,
-    -- a changed Ukrainian description invalidates its English translation
-    description_en = CASE WHEN core.page.native_description IS DISTINCT FROM EXCLUDED.native_description
+    -- a changed Ukrainian description invalidates its English translation; a
+    -- first one doesn't (English imported from the spreadsheets has no
+    -- Ukrainian source yet and must survive the first refresh)
+    description_en = CASE WHEN core.page.native_description IS NOT NULL
+                           AND core.page.native_description IS DISTINCT FROM EXCLUDED.native_description
                           THEN NULL ELSE core.page.description_en END,
     native_description = EXCLUDED.native_description, years = EXCLUDED.years,
     wiki_timestamp = EXCLUDED.wiki_timestamp, availability = EXCLUDED.availability,
