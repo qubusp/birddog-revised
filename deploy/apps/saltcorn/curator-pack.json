@@ -1,0 +1,5025 @@
+{
+  "plugins": [
+    {
+      "name": "postgres-tables",
+      "source": "npm",
+      "location": "@saltcorn/postgres-tables",
+      "configuration": null,
+      "deploy_private_key": null,
+      "version": "0.2.3"
+    }
+  ],
+  "tables": [
+    {
+      "name": "bd_document",
+      "description": "Birddog documents (core.document); curators edit the curation fields",
+      "is_user_group": false,
+      "min_role_read": 40,
+      "min_role_write": 40,
+      "versioned": false,
+      "has_sync_info": false,
+      "provider_name": "PostgreSQL remote table",
+      "provider_cfg": {
+        "ssl": false,
+        "host": "postgres",
+        "port": 5432,
+        "user": "birddog_ui",
+        "fields": [
+          {
+            "name": "id",
+            "type": "Integer",
+            "label": "ID",
+            "required": true,
+            "primary_key": true,
+            "table_id": 3
+          },
+          {
+            "name": "url",
+            "type": "String",
+            "label": "URL",
+            "required": true,
+            "table_id": 3
+          },
+          {
+            "name": "title",
+            "type": "String",
+            "label": "Title",
+            "table_id": 3
+          },
+          {
+            "name": "domain",
+            "type": "String",
+            "label": "Domain",
+            "table_id": 3
+          },
+          {
+            "name": "wikisource_url",
+            "type": "String",
+            "label": "Wikisource URL",
+            "table_id": 3
+          },
+          {
+            "name": "filename",
+            "type": "String",
+            "label": "Filename",
+            "table_id": 3
+          },
+          {
+            "name": "wiki_timestamp",
+            "type": "Date",
+            "label": "Wiki timestamp",
+            "table_id": 3
+          },
+          {
+            "name": "byte_size",
+            "type": "Integer",
+            "label": "Bytes",
+            "table_id": 3
+          },
+          {
+            "name": "mimetype",
+            "type": "String",
+            "label": "MIME type",
+            "table_id": 3
+          },
+          {
+            "name": "mediatype",
+            "type": "String",
+            "label": "Media type",
+            "table_id": 3
+          },
+          {
+            "name": "width",
+            "type": "Integer",
+            "label": "Width",
+            "table_id": 3
+          },
+          {
+            "name": "height",
+            "type": "Integer",
+            "label": "Height",
+            "table_id": 3
+          },
+          {
+            "name": "page_count",
+            "type": "Integer",
+            "label": "Page count",
+            "table_id": 3
+          },
+          {
+            "name": "sha1_hash",
+            "type": "String",
+            "label": "SHA-1",
+            "table_id": 3
+          },
+          {
+            "name": "description_url",
+            "type": "String",
+            "label": "Description URL",
+            "table_id": 3
+          },
+          {
+            "name": "availability",
+            "type": "String",
+            "label": "Availability",
+            "table_id": 3
+          },
+          {
+            "name": "lookup_status",
+            "type": "String",
+            "label": "Lookup status",
+            "table_id": 3
+          },
+          {
+            "name": "location_status",
+            "type": "String",
+            "label": "Location status",
+            "table_id": 3
+          },
+          {
+            "name": "dupes_checked",
+            "type": "Bool",
+            "label": "Dupes checked",
+            "required": true,
+            "table_id": 3
+          },
+          {
+            "name": "anomaly",
+            "type": "Bool",
+            "label": "Anomaly",
+            "required": true,
+            "table_id": 3
+          },
+          {
+            "name": "anomaly_comment",
+            "type": "String",
+            "label": "Anomaly comment",
+            "table_id": 3
+          },
+          {
+            "name": "last_birddog_update",
+            "type": "Date",
+            "label": "Last Birddog update",
+            "table_id": 3
+          },
+          {
+            "name": "description",
+            "type": "String",
+            "label": "Description",
+            "table_id": 3
+          },
+          {
+            "name": "process_code",
+            "type": "String",
+            "label": "Process code",
+            "table_id": 3
+          },
+          {
+            "name": "save_status",
+            "type": "String",
+            "label": "Save status",
+            "table_id": 3
+          },
+          {
+            "name": "doc_structure",
+            "type": "String",
+            "label": "Doc structure",
+            "table_id": 3
+          },
+          {
+            "name": "doc_scope",
+            "type": "String",
+            "label": "Doc scope",
+            "table_id": 3
+          },
+          {
+            "name": "language",
+            "type": "String",
+            "label": "Language",
+            "table_id": 3
+          },
+          {
+            "name": "processor",
+            "type": "String",
+            "label": "Processor",
+            "table_id": 3
+          },
+          {
+            "name": "pages_processed",
+            "type": "String",
+            "label": "Pages processed",
+            "table_id": 3
+          },
+          {
+            "name": "when_transcribed",
+            "type": "String",
+            "label": "When transcribed",
+            "table_id": 3
+          },
+          {
+            "name": "comments",
+            "type": "String",
+            "label": "Comments",
+            "table_id": 3
+          },
+          {
+            "name": "reference_date",
+            "type": "Date",
+            "label": "Reference date",
+            "table_id": 3
+          },
+          {
+            "name": "import_message",
+            "type": "String",
+            "label": "Import message",
+            "table_id": 3
+          },
+          {
+            "name": "last_imported",
+            "type": "Date",
+            "label": "Last imported",
+            "table_id": 3
+          }
+        ],
+        "schema": "core",
+        "database": "birddog",
+        "password": "",
+        "read_only": false,
+        "table_name": "document"
+      },
+      "ownership_formula": null,
+      "fields": [
+        {
+          "name": "id",
+          "label": "ID",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Integer",
+          "attributes": {},
+          "required": true,
+          "primary_key": true,
+          "refname": ""
+        },
+        {
+          "name": "url",
+          "label": "URL",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": true,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "title",
+          "label": "Title",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "domain",
+          "label": "Domain",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "wikisource_url",
+          "label": "Wikisource URL",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "filename",
+          "label": "Filename",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "wiki_timestamp",
+          "label": "Wiki timestamp",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Date",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "byte_size",
+          "label": "Bytes",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Integer",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "mimetype",
+          "label": "MIME type",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "mediatype",
+          "label": "Media type",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "width",
+          "label": "Width",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Integer",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "height",
+          "label": "Height",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Integer",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "page_count",
+          "label": "Page count",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Integer",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "sha1_hash",
+          "label": "SHA-1",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "description_url",
+          "label": "Description URL",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "availability",
+          "label": "Availability",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "lookup_status",
+          "label": "Lookup status",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "location_status",
+          "label": "Location status",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "dupes_checked",
+          "label": "Dupes checked",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Bool",
+          "attributes": {},
+          "required": true,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "anomaly",
+          "label": "Anomaly",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Bool",
+          "attributes": {},
+          "required": true,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "anomaly_comment",
+          "label": "Anomaly comment",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "last_birddog_update",
+          "label": "Last Birddog update",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Date",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "description",
+          "label": "Description",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "process_code",
+          "label": "Process code",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "save_status",
+          "label": "Save status",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "doc_structure",
+          "label": "Doc structure",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "doc_scope",
+          "label": "Doc scope",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "language",
+          "label": "Language",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "processor",
+          "label": "Processor",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "pages_processed",
+          "label": "Pages processed",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "when_transcribed",
+          "label": "When transcribed",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "comments",
+          "label": "Comments",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "reference_date",
+          "label": "Reference date",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Date",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "import_message",
+          "label": "Import message",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "last_imported",
+          "label": "Last imported",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Date",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        }
+      ],
+      "constraints": [],
+      "ownership_field_name": null
+    },
+    {
+      "name": "bd_page",
+      "description": "Birddog pages (views._page_base: core.page + parent title, counts)",
+      "is_user_group": false,
+      "min_role_read": 40,
+      "min_role_write": 1,
+      "versioned": false,
+      "has_sync_info": false,
+      "provider_name": "PostgreSQL remote table",
+      "provider_cfg": {
+        "ssl": false,
+        "host": "postgres",
+        "port": 5432,
+        "user": "birddog_ui",
+        "fields": [
+          {
+            "name": "id",
+            "type": "Integer",
+            "label": "ID",
+            "required": true,
+            "primary_key": true,
+            "table_id": 2
+          },
+          {
+            "name": "url",
+            "type": "String",
+            "label": "URL",
+            "table_id": 2
+          },
+          {
+            "name": "title",
+            "type": "String",
+            "label": "Title",
+            "table_id": 2
+          },
+          {
+            "name": "domain",
+            "type": "String",
+            "label": "Domain",
+            "table_id": 2
+          },
+          {
+            "name": "parent_id",
+            "type": "Integer",
+            "label": "Parent ID",
+            "table_id": 2
+          },
+          {
+            "name": "label",
+            "type": "String",
+            "label": "Label",
+            "table_id": 2
+          },
+          {
+            "name": "root_label",
+            "type": "String",
+            "label": "Root label",
+            "table_id": 2
+          },
+          {
+            "name": "seq_label",
+            "type": "String",
+            "label": "Seq label",
+            "table_id": 2
+          },
+          {
+            "name": "level",
+            "type": "String",
+            "label": "Level",
+            "table_id": 2
+          },
+          {
+            "name": "native_description",
+            "type": "String",
+            "label": "Native description",
+            "table_id": 2
+          },
+          {
+            "name": "description_en",
+            "type": "String",
+            "label": "Description (en)",
+            "table_id": 2
+          },
+          {
+            "name": "years",
+            "type": "String",
+            "label": "Years",
+            "table_id": 2
+          },
+          {
+            "name": "wiki_timestamp",
+            "type": "Date",
+            "label": "Wiki timestamp",
+            "table_id": 2
+          },
+          {
+            "name": "availability",
+            "type": "String",
+            "label": "Availability",
+            "table_id": 2
+          },
+          {
+            "name": "source_type",
+            "type": "String",
+            "label": "Source type",
+            "table_id": 2
+          },
+          {
+            "name": "stale",
+            "type": "Bool",
+            "label": "Stale",
+            "table_id": 2
+          },
+          {
+            "name": "last_birddog_update",
+            "type": "Date",
+            "label": "Last Birddog update",
+            "table_id": 2
+          },
+          {
+            "name": "comments",
+            "type": "String",
+            "label": "Comments",
+            "table_id": 2
+          },
+          {
+            "name": "reference_date",
+            "type": "Date",
+            "label": "Reference date",
+            "table_id": 2
+          },
+          {
+            "name": "change_date",
+            "type": "Date",
+            "label": "Change date",
+            "table_id": 2
+          },
+          {
+            "name": "import_message",
+            "type": "String",
+            "label": "Import message",
+            "table_id": 2
+          },
+          {
+            "name": "last_imported",
+            "type": "Date",
+            "label": "Last imported",
+            "table_id": 2
+          },
+          {
+            "name": "parent",
+            "type": "String",
+            "label": "Parent",
+            "table_id": 2
+          },
+          {
+            "name": "children_count",
+            "type": "Integer",
+            "label": "Children",
+            "table_id": 2
+          },
+          {
+            "name": "doc_links_count",
+            "type": "Integer",
+            "label": "Documents",
+            "table_id": 2
+          }
+        ],
+        "schema": "views",
+        "database": "birddog",
+        "password": "",
+        "read_only": true,
+        "table_name": "_page_base"
+      },
+      "ownership_formula": null,
+      "fields": [
+        {
+          "name": "id",
+          "label": "ID",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Integer",
+          "attributes": {},
+          "required": true,
+          "primary_key": true,
+          "refname": ""
+        },
+        {
+          "name": "url",
+          "label": "URL",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "title",
+          "label": "Title",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "domain",
+          "label": "Domain",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "parent_id",
+          "label": "Parent ID",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Integer",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "label",
+          "label": "Label",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "root_label",
+          "label": "Root label",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "seq_label",
+          "label": "Seq label",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "level",
+          "label": "Level",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "native_description",
+          "label": "Native description",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "description_en",
+          "label": "Description (en)",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "years",
+          "label": "Years",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "wiki_timestamp",
+          "label": "Wiki timestamp",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Date",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "availability",
+          "label": "Availability",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "source_type",
+          "label": "Source type",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "stale",
+          "label": "Stale",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Bool",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "last_birddog_update",
+          "label": "Last Birddog update",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Date",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "comments",
+          "label": "Comments",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "reference_date",
+          "label": "Reference date",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Date",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "change_date",
+          "label": "Change date",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Date",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "import_message",
+          "label": "Import message",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "last_imported",
+          "label": "Last imported",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Date",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "parent",
+          "label": "Parent",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "children_count",
+          "label": "Children",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Integer",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "doc_links_count",
+          "label": "Documents",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Integer",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        }
+      ],
+      "constraints": [],
+      "ownership_field_name": null
+    },
+    {
+      "name": "bd_page_document",
+      "description": "Page-document links with titles (saltcorn.page_document_link)",
+      "is_user_group": false,
+      "min_role_read": 40,
+      "min_role_write": 1,
+      "versioned": false,
+      "has_sync_info": false,
+      "provider_name": "PostgreSQL remote table",
+      "provider_cfg": {
+        "ssl": false,
+        "host": "postgres",
+        "port": 5432,
+        "user": "birddog_ui",
+        "fields": [
+          {
+            "name": "link_id",
+            "type": "String",
+            "label": "Link",
+            "required": true,
+            "primary_key": true,
+            "table_id": 4
+          },
+          {
+            "name": "page_id",
+            "type": "Integer",
+            "label": "Page ID",
+            "table_id": 4
+          },
+          {
+            "name": "page_title",
+            "type": "String",
+            "label": "Page",
+            "table_id": 4
+          },
+          {
+            "name": "page_url",
+            "type": "String",
+            "label": "Page URL",
+            "table_id": 4
+          },
+          {
+            "name": "document_id",
+            "type": "Integer",
+            "label": "Document ID",
+            "table_id": 4
+          },
+          {
+            "name": "document_title",
+            "type": "String",
+            "label": "Document",
+            "table_id": 4
+          },
+          {
+            "name": "document_url",
+            "type": "String",
+            "label": "Document URL",
+            "table_id": 4
+          },
+          {
+            "name": "process_code",
+            "type": "String",
+            "label": "Process code",
+            "table_id": 4
+          },
+          {
+            "name": "save_status",
+            "type": "String",
+            "label": "Save status",
+            "table_id": 4
+          },
+          {
+            "name": "doc_scope",
+            "type": "String",
+            "label": "Doc scope",
+            "table_id": 4
+          }
+        ],
+        "schema": "saltcorn",
+        "database": "birddog",
+        "password": "",
+        "read_only": true,
+        "table_name": "page_document_link"
+      },
+      "ownership_formula": null,
+      "fields": [
+        {
+          "name": "link_id",
+          "label": "Link",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": true,
+          "primary_key": true,
+          "refname": ""
+        },
+        {
+          "name": "page_id",
+          "label": "Page ID",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Integer",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "page_title",
+          "label": "Page",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "page_url",
+          "label": "Page URL",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "document_id",
+          "label": "Document ID",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Integer",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "document_title",
+          "label": "Document",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "document_url",
+          "label": "Document URL",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "process_code",
+          "label": "Process code",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "save_status",
+          "label": "Save status",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "doc_scope",
+          "label": "Doc scope",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        }
+      ],
+      "constraints": [],
+      "ownership_field_name": null
+    },
+    {
+      "name": "bd_search_hit",
+      "description": "core.search results per search text (saltcorn.search_hit)",
+      "is_user_group": false,
+      "min_role_read": 40,
+      "min_role_write": 1,
+      "versioned": false,
+      "has_sync_info": false,
+      "provider_name": "PostgreSQL remote table",
+      "provider_cfg": {
+        "ssl": false,
+        "host": "postgres",
+        "port": 5432,
+        "user": "birddog_ui",
+        "fields": [
+          {
+            "name": "hit_id",
+            "type": "String",
+            "label": "Hit",
+            "required": true,
+            "primary_key": true,
+            "table_id": 6
+          },
+          {
+            "name": "q",
+            "type": "String",
+            "label": "Search",
+            "table_id": 6
+          },
+          {
+            "name": "kind",
+            "type": "String",
+            "label": "Kind",
+            "table_id": 6
+          },
+          {
+            "name": "id",
+            "type": "Integer",
+            "label": "ID",
+            "table_id": 6
+          },
+          {
+            "name": "title",
+            "type": "String",
+            "label": "Title",
+            "table_id": 6
+          },
+          {
+            "name": "url",
+            "type": "String",
+            "label": "URL",
+            "table_id": 6
+          },
+          {
+            "name": "snippet",
+            "type": "String",
+            "label": "Snippet",
+            "table_id": 6
+          },
+          {
+            "name": "score",
+            "type": "Float",
+            "label": "Score",
+            "table_id": 6
+          }
+        ],
+        "schema": "saltcorn",
+        "database": "birddog",
+        "password": "",
+        "read_only": true,
+        "table_name": "search_hit"
+      },
+      "ownership_formula": null,
+      "fields": [
+        {
+          "name": "hit_id",
+          "label": "Hit",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": true,
+          "primary_key": true,
+          "refname": ""
+        },
+        {
+          "name": "q",
+          "label": "Search",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "kind",
+          "label": "Kind",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "id",
+          "label": "ID",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Integer",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "title",
+          "label": "Title",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "url",
+          "label": "URL",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "snippet",
+          "label": "Snippet",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "score",
+          "label": "Score",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Float",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        }
+      ],
+      "constraints": [],
+      "ownership_field_name": null
+    },
+    {
+      "name": "bd_search_request",
+      "description": "Search texts (saltcorn.search_request); inserting one runs core.search",
+      "is_user_group": false,
+      "min_role_read": 40,
+      "min_role_write": 40,
+      "versioned": false,
+      "has_sync_info": false,
+      "provider_name": "PostgreSQL remote table",
+      "provider_cfg": {
+        "ssl": false,
+        "host": "postgres",
+        "port": 5432,
+        "user": "birddog_ui",
+        "fields": [
+          {
+            "name": "id",
+            "type": "Integer",
+            "label": "ID",
+            "required": true,
+            "primary_key": true,
+            "table_id": 5
+          },
+          {
+            "name": "q",
+            "type": "String",
+            "label": "Search",
+            "required": true,
+            "table_id": 5
+          },
+          {
+            "name": "requested_at",
+            "type": "Date",
+            "label": "Requested at",
+            "table_id": 5
+          }
+        ],
+        "schema": "saltcorn",
+        "database": "birddog",
+        "password": "",
+        "read_only": false,
+        "table_name": "search_request"
+      },
+      "ownership_formula": null,
+      "fields": [
+        {
+          "name": "id",
+          "label": "ID",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Integer",
+          "attributes": {},
+          "required": true,
+          "primary_key": true,
+          "refname": ""
+        },
+        {
+          "name": "q",
+          "label": "Search",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "String",
+          "attributes": {},
+          "required": true,
+          "primary_key": false,
+          "refname": ""
+        },
+        {
+          "name": "requested_at",
+          "label": "Requested at",
+          "is_unique": false,
+          "calculated": false,
+          "stored": false,
+          "type": "Date",
+          "attributes": {},
+          "required": false,
+          "primary_key": false,
+          "refname": ""
+        }
+      ],
+      "constraints": [],
+      "ownership_field_name": null
+    }
+  ],
+  "views": [
+    {
+      "name": "curator_document",
+      "description": "",
+      "viewtemplate": "Show",
+      "configuration": {
+        "layout": {
+          "above": [
+            {
+              "type": "field",
+              "block": false,
+              "fieldview": "as_text",
+              "textStyle": "h3",
+              "field_name": "title"
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "url": "'/view/curator_document_edit?id=' + id",
+                      "text": "'Edit curator fields'",
+                      "type": "link",
+                      "block": false,
+                      "isFormula": {
+                        "url": true,
+                        "text": true
+                      },
+                      "textStyle": "",
+                      "link_target_blank": false
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Wiki file",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "url": "url",
+                      "text": "url",
+                      "type": "link",
+                      "block": false,
+                      "isFormula": {
+                        "url": true,
+                        "text": true
+                      },
+                      "textStyle": "",
+                      "link_target_blank": true
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Wikisource",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "url": "wikisource_url || ''",
+                      "text": "wikisource_url || ''",
+                      "type": "link",
+                      "block": false,
+                      "isFormula": {
+                        "url": true,
+                        "text": true
+                      },
+                      "textStyle": "",
+                      "link_target_blank": true
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Filename",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "filename"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "MIME type",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "mimetype"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Pages",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "show",
+                      "textStyle": "",
+                      "field_name": "page_count"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Bytes",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "show",
+                      "textStyle": "",
+                      "field_name": "byte_size"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Availability",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "availability"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Lookup status",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "lookup_status"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Location status",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "location_status"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "SHA-1",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "sha1_hash"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "type": "blank",
+              "block": false,
+              "contents": "Curation",
+              "textStyle": "h5"
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Description",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "description"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Process code",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "process_code"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Save status",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "save_status"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Doc structure",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "doc_structure"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Doc scope",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "doc_scope"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Language",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "language"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Processor",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "processor"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Pages processed",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "pages_processed"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "When transcribed",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "when_transcribed"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Comments",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "comments"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Reference date",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "show",
+                      "textStyle": "",
+                      "field_name": "reference_date"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Anomaly",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "show",
+                      "textStyle": "",
+                      "field_name": "anomaly"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Anomaly comment",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "anomaly_comment"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "type": "blank",
+              "block": false,
+              "contents": "Owning pages",
+              "textStyle": "h5"
+            },
+            {
+              "name": "curator_document_pages",
+              "type": "view",
+              "view": "Independent:curator_document_pages",
+              "state": "shared",
+              "extra_state_fml": "{document_id: id}"
+            }
+          ]
+        },
+        "columns": [
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "title"
+          },
+          {
+            "type": "Link",
+            "link_url": "'/view/curator_document_edit?id=' + id",
+            "link_text": "'Edit curator fields'",
+            "link_url_formula": true,
+            "link_text_formula": true
+          },
+          {
+            "type": "Link",
+            "link_url": "url",
+            "link_text": "url",
+            "link_url_formula": true,
+            "link_text_formula": true
+          },
+          {
+            "type": "Link",
+            "link_url": "wikisource_url || ''",
+            "link_text": "wikisource_url || ''",
+            "link_url_formula": true,
+            "link_text_formula": true
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "filename"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "mimetype"
+          },
+          {
+            "type": "Field",
+            "fieldview": "show",
+            "field_name": "page_count"
+          },
+          {
+            "type": "Field",
+            "fieldview": "show",
+            "field_name": "byte_size"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "availability"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "lookup_status"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "location_status"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "sha1_hash"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "description"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "process_code"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "save_status"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "doc_structure"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "doc_scope"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "language"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "processor"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "pages_processed"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "when_transcribed"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "comments"
+          },
+          {
+            "type": "Field",
+            "fieldview": "show",
+            "field_name": "reference_date"
+          },
+          {
+            "type": "Field",
+            "fieldview": "show",
+            "field_name": "anomaly"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "anomaly_comment"
+          },
+          {
+            "name": "curator_document_pages",
+            "type": "View",
+            "view": "Independent:curator_document_pages",
+            "state": "shared"
+          }
+        ]
+      },
+      "min_role": 40,
+      "table": "bd_document",
+      "slug": null,
+      "attributes": null,
+      "default_render_page": null,
+      "exttable_name": null
+    },
+    {
+      "name": "curator_document_edit",
+      "description": "",
+      "viewtemplate": "Edit",
+      "configuration": {
+        "fixed": {},
+        "layout": {
+          "above": [
+            {
+              "type": "blank",
+              "block": false,
+              "contents": "Edit curator fields",
+              "textStyle": "h3"
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "url": "'/view/curator_document?id=' + id",
+                      "text": "Back to document",
+                      "type": "link",
+                      "block": false,
+                      "isFormula": {
+                        "url": true,
+                        "text": false
+                      },
+                      "textStyle": "",
+                      "link_target_blank": false
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Description",
+                      "labelFor": "description",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "edit",
+                      "textStyle": "",
+                      "field_name": "description"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Process code",
+                      "labelFor": "process_code",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "edit",
+                      "textStyle": "",
+                      "field_name": "process_code"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Save status",
+                      "labelFor": "save_status",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "edit",
+                      "textStyle": "",
+                      "field_name": "save_status"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Doc structure",
+                      "labelFor": "doc_structure",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "edit",
+                      "textStyle": "",
+                      "field_name": "doc_structure"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Doc scope",
+                      "labelFor": "doc_scope",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "edit",
+                      "textStyle": "",
+                      "field_name": "doc_scope"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Language",
+                      "labelFor": "language",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "edit",
+                      "textStyle": "",
+                      "field_name": "language"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Processor",
+                      "labelFor": "processor",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "edit",
+                      "textStyle": "",
+                      "field_name": "processor"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Pages processed",
+                      "labelFor": "pages_processed",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "edit",
+                      "textStyle": "",
+                      "field_name": "pages_processed"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "When transcribed",
+                      "labelFor": "when_transcribed",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "edit",
+                      "textStyle": "",
+                      "field_name": "when_transcribed"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Comments",
+                      "labelFor": "comments",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "edit",
+                      "textStyle": "",
+                      "field_name": "comments"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Reference date",
+                      "labelFor": "reference_date",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "edit",
+                      "textStyle": "",
+                      "field_name": "reference_date"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Anomaly",
+                      "labelFor": "anomaly",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "edit",
+                      "textStyle": "",
+                      "field_name": "anomaly"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Anomaly comment",
+                      "labelFor": "anomaly_comment",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "edit",
+                      "textStyle": "",
+                      "field_name": "anomaly_comment"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "1.5rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                null,
+                {
+                  "type": "action",
+                  "block": false,
+                  "minRole": 40,
+                  "action_name": "Save",
+                  "action_style": "btn-primary"
+                }
+              ]
+            }
+          ]
+        },
+        "columns": [
+          {
+            "type": "Link",
+            "link_url": "'/view/curator_document?id=' + id",
+            "link_text": "Back to document",
+            "link_url_formula": true,
+            "link_text_formula": true
+          },
+          {
+            "type": "Field",
+            "fieldview": "edit",
+            "field_name": "description"
+          },
+          {
+            "type": "Field",
+            "fieldview": "edit",
+            "field_name": "process_code"
+          },
+          {
+            "type": "Field",
+            "fieldview": "edit",
+            "field_name": "save_status"
+          },
+          {
+            "type": "Field",
+            "fieldview": "edit",
+            "field_name": "doc_structure"
+          },
+          {
+            "type": "Field",
+            "fieldview": "edit",
+            "field_name": "doc_scope"
+          },
+          {
+            "type": "Field",
+            "fieldview": "edit",
+            "field_name": "language"
+          },
+          {
+            "type": "Field",
+            "fieldview": "edit",
+            "field_name": "processor"
+          },
+          {
+            "type": "Field",
+            "fieldview": "edit",
+            "field_name": "pages_processed"
+          },
+          {
+            "type": "Field",
+            "fieldview": "edit",
+            "field_name": "when_transcribed"
+          },
+          {
+            "type": "Field",
+            "fieldview": "edit",
+            "field_name": "comments"
+          },
+          {
+            "type": "Field",
+            "fieldview": "edit",
+            "field_name": "reference_date"
+          },
+          {
+            "type": "Field",
+            "fieldview": "edit",
+            "field_name": "anomaly"
+          },
+          {
+            "type": "Field",
+            "fieldview": "edit",
+            "field_name": "anomaly_comment"
+          },
+          {
+            "type": "Action",
+            "action_name": "Save"
+          }
+        ],
+        "dest_url_formula": "'/view/curator_document?id=' + id",
+        "destination_type": "URL formula"
+      },
+      "min_role": 40,
+      "table": "bd_document",
+      "slug": null,
+      "attributes": null,
+      "default_render_page": null,
+      "exttable_name": null
+    },
+    {
+      "name": "curator_document_pages",
+      "description": "",
+      "viewtemplate": "List",
+      "configuration": {
+        "layout": {
+          "besides": [
+            {
+              "contents": {
+                "url": "'/view/curator_page?id=' + page_id",
+                "text": "page_title || page_url",
+                "type": "link",
+                "block": false,
+                "isFormula": {
+                  "url": true,
+                  "text": true
+                },
+                "textStyle": "",
+                "link_target_blank": false
+              },
+              "header_label": "Page"
+            },
+            {
+              "contents": {
+                "url": "page_url",
+                "text": "'open'",
+                "type": "link",
+                "block": false,
+                "isFormula": {
+                  "url": true,
+                  "text": true
+                },
+                "textStyle": "",
+                "link_target_blank": true
+              },
+              "header_label": "Wiki"
+            }
+          ],
+          "list_columns": true
+        },
+        "columns": [
+          {
+            "type": "Link",
+            "link_url": "'/view/curator_page?id=' + page_id",
+            "link_text": "page_title || page_url",
+            "header_label": "Page",
+            "link_url_formula": true,
+            "link_target_blank": false,
+            "link_text_formula": true
+          },
+          {
+            "type": "Link",
+            "link_url": "page_url",
+            "link_text": "'open'",
+            "header_label": "Wiki",
+            "link_url_formula": true,
+            "link_target_blank": true,
+            "link_text_formula": true
+          }
+        ],
+        "default_state": {
+          "include_fml": "document_id === $document_id",
+          "_order_field": "page_title",
+          "_rows_per_page": 100,
+          "_omit_state_form": true
+        }
+      },
+      "min_role": 40,
+      "table": "bd_page_document",
+      "slug": null,
+      "attributes": null,
+      "default_render_page": null,
+      "exttable_name": null
+    },
+    {
+      "name": "curator_page",
+      "description": "",
+      "viewtemplate": "Show",
+      "configuration": {
+        "layout": {
+          "above": [
+            {
+              "type": "field",
+              "block": false,
+              "fieldview": "as_text",
+              "textStyle": "h3",
+              "field_name": "title"
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Wiki page",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "url": "url",
+                      "text": "url",
+                      "type": "link",
+                      "block": false,
+                      "isFormula": {
+                        "url": true,
+                        "text": true
+                      },
+                      "textStyle": "",
+                      "link_target_blank": true
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Parent",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "url": "parent_id ? '/view/curator_page?id=' + parent_id : ''",
+                      "text": "parent || ''",
+                      "type": "link",
+                      "block": false,
+                      "isFormula": {
+                        "url": true,
+                        "text": true
+                      },
+                      "textStyle": "",
+                      "link_target_blank": false
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Level",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "level"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Label",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "label"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Archive",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "root_label"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Years",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "years"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Domain",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "domain"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Availability",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "availability"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Source type",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "source_type"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Stale",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "show",
+                      "textStyle": "",
+                      "field_name": "stale"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Description (en)",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "description_en"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Native description",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "native_description"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Comments",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "as_text",
+                      "textStyle": "",
+                      "field_name": "comments"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Wiki timestamp",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "show",
+                      "textStyle": "",
+                      "field_name": "wiki_timestamp"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Last Birddog update",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "show",
+                      "textStyle": "",
+                      "field_name": "last_birddog_update"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Child pages",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "show",
+                      "textStyle": "",
+                      "field_name": "children_count"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "type": "blank",
+              "block": false,
+              "contents": "Linked documents",
+              "textStyle": "h5"
+            },
+            {
+              "name": "curator_page_documents",
+              "type": "view",
+              "view": "Independent:curator_page_documents",
+              "state": "shared",
+              "extra_state_fml": "{page_id: id}"
+            }
+          ]
+        },
+        "columns": [
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "title"
+          },
+          {
+            "type": "Link",
+            "link_url": "url",
+            "link_text": "url",
+            "link_url_formula": true,
+            "link_text_formula": true
+          },
+          {
+            "type": "Link",
+            "link_url": "parent_id ? '/view/curator_page?id=' + parent_id : ''",
+            "link_text": "parent || ''",
+            "link_url_formula": true,
+            "link_text_formula": true
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "level"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "label"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "root_label"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "years"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "domain"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "availability"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "source_type"
+          },
+          {
+            "type": "Field",
+            "fieldview": "show",
+            "field_name": "stale"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "description_en"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "native_description"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "comments"
+          },
+          {
+            "type": "Field",
+            "fieldview": "show",
+            "field_name": "wiki_timestamp"
+          },
+          {
+            "type": "Field",
+            "fieldview": "show",
+            "field_name": "last_birddog_update"
+          },
+          {
+            "type": "Field",
+            "fieldview": "show",
+            "field_name": "children_count"
+          },
+          {
+            "name": "curator_page_documents",
+            "type": "View",
+            "view": "Independent:curator_page_documents",
+            "state": "shared"
+          }
+        ]
+      },
+      "min_role": 40,
+      "table": "bd_page",
+      "slug": null,
+      "attributes": null,
+      "default_render_page": null,
+      "exttable_name": null
+    },
+    {
+      "name": "curator_page_documents",
+      "description": "",
+      "viewtemplate": "List",
+      "configuration": {
+        "layout": {
+          "besides": [
+            {
+              "contents": {
+                "url": "'/view/curator_document?id=' + document_id",
+                "text": "document_title || document_url",
+                "type": "link",
+                "block": false,
+                "isFormula": {
+                  "url": true,
+                  "text": true
+                },
+                "textStyle": "",
+                "link_target_blank": false
+              },
+              "header_label": "Document"
+            },
+            {
+              "contents": {
+                "type": "field",
+                "block": false,
+                "fieldview": "as_text",
+                "textStyle": "",
+                "field_name": "process_code"
+              },
+              "header_label": "Process code"
+            },
+            {
+              "contents": {
+                "type": "field",
+                "block": false,
+                "fieldview": "as_text",
+                "textStyle": "",
+                "field_name": "save_status"
+              },
+              "header_label": "Save status"
+            },
+            {
+              "contents": {
+                "type": "field",
+                "block": false,
+                "fieldview": "as_text",
+                "textStyle": "",
+                "field_name": "doc_scope"
+              },
+              "header_label": "Doc scope"
+            },
+            {
+              "contents": {
+                "url": "document_url",
+                "text": "'open'",
+                "type": "link",
+                "block": false,
+                "isFormula": {
+                  "url": true,
+                  "text": true
+                },
+                "textStyle": "",
+                "link_target_blank": true
+              },
+              "header_label": "Wiki"
+            }
+          ],
+          "list_columns": true
+        },
+        "columns": [
+          {
+            "type": "Link",
+            "link_url": "'/view/curator_document?id=' + document_id",
+            "link_text": "document_title || document_url",
+            "header_label": "Document",
+            "link_url_formula": true,
+            "link_target_blank": false,
+            "link_text_formula": true
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "process_code",
+            "header_label": "Process code"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "save_status",
+            "header_label": "Save status"
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "doc_scope",
+            "header_label": "Doc scope"
+          },
+          {
+            "type": "Link",
+            "link_url": "document_url",
+            "link_text": "'open'",
+            "header_label": "Wiki",
+            "link_url_formula": true,
+            "link_target_blank": true,
+            "link_text_formula": true
+          }
+        ],
+        "default_state": {
+          "include_fml": "page_id === $page_id",
+          "_order_field": "document_title",
+          "_rows_per_page": 100,
+          "_omit_state_form": true
+        }
+      },
+      "min_role": 40,
+      "table": "bd_page_document",
+      "slug": null,
+      "attributes": null,
+      "default_render_page": null,
+      "exttable_name": null
+    },
+    {
+      "name": "curator_search_form",
+      "description": "",
+      "viewtemplate": "Edit",
+      "configuration": {
+        "fixed": {},
+        "layout": {
+          "above": [
+            {
+              "style": {
+                "margin-bottom": "0.75rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "blank",
+                      "block": false,
+                      "contents": "Search",
+                      "labelFor": "q",
+                      "textStyle": ""
+                    }
+                  ]
+                },
+                {
+                  "above": [
+                    null,
+                    {
+                      "type": "field",
+                      "block": false,
+                      "fieldview": "edit",
+                      "textStyle": "",
+                      "field_name": "q"
+                    }
+                  ]
+                }
+              ],
+              "breakpoints": [
+                "md",
+                "md"
+              ],
+              "mobileAligns": [
+                "start"
+              ]
+            },
+            {
+              "style": {
+                "margin-bottom": "1.5rem"
+              },
+              "aligns": [
+                "end",
+                "start"
+              ],
+              "widths": [
+                2,
+                10
+              ],
+              "besides": [
+                null,
+                {
+                  "type": "action",
+                  "block": false,
+                  "minRole": 40,
+                  "action_name": "Save",
+                  "action_label": "Search",
+                  "action_style": "btn-primary"
+                }
+              ]
+            }
+          ]
+        },
+        "columns": [
+          {
+            "type": "Field",
+            "fieldview": "edit",
+            "field_name": "q"
+          },
+          {
+            "type": "Action",
+            "action_name": "Save"
+          }
+        ],
+        "dest_url_formula": "'/page/curator_search?q=' + encodeURIComponent(q)",
+        "destination_type": "URL formula"
+      },
+      "min_role": 40,
+      "table": "bd_search_request",
+      "slug": null,
+      "attributes": null,
+      "default_render_page": null,
+      "exttable_name": null
+    },
+    {
+      "name": "curator_search_results",
+      "description": "",
+      "viewtemplate": "List",
+      "configuration": {
+        "layout": {
+          "besides": [
+            {
+              "contents": {
+                "type": "field",
+                "block": false,
+                "fieldview": "as_text",
+                "textStyle": "",
+                "field_name": "kind"
+              },
+              "header_label": "Kind"
+            },
+            {
+              "contents": {
+                "url": "kind === 'page' ? '/view/curator_page?id=' + id : '/view/curator_document?id=' + id",
+                "text": "title || url",
+                "type": "link",
+                "block": false,
+                "isFormula": {
+                  "url": true,
+                  "text": true
+                },
+                "textStyle": "",
+                "link_target_blank": false
+              },
+              "header_label": "Title"
+            },
+            {
+              "contents": {
+                "type": "field",
+                "block": false,
+                "fieldview": "as_text",
+                "textStyle": "",
+                "field_name": "snippet"
+              },
+              "header_label": "Snippet"
+            },
+            {
+              "contents": {
+                "url": "url",
+                "text": "'open'",
+                "type": "link",
+                "block": false,
+                "isFormula": {
+                  "url": true,
+                  "text": true
+                },
+                "textStyle": "",
+                "link_target_blank": true
+              },
+              "header_label": "Wiki"
+            }
+          ],
+          "list_columns": true
+        },
+        "columns": [
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "kind",
+            "header_label": "Kind"
+          },
+          {
+            "type": "Link",
+            "link_url": "kind === 'page' ? '/view/curator_page?id=' + id : '/view/curator_document?id=' + id",
+            "link_text": "title || url",
+            "header_label": "Title",
+            "link_url_formula": true,
+            "link_target_blank": false,
+            "link_text_formula": true
+          },
+          {
+            "type": "Field",
+            "fieldview": "as_text",
+            "field_name": "snippet",
+            "header_label": "Snippet"
+          },
+          {
+            "type": "Link",
+            "link_url": "url",
+            "link_text": "'open'",
+            "header_label": "Wiki",
+            "link_url_formula": true,
+            "link_target_blank": true,
+            "link_text_formula": true
+          }
+        ],
+        "default_state": {
+          "_descending": true,
+          "include_fml": "q === $q",
+          "_order_field": "score",
+          "_rows_per_page": 50,
+          "_omit_state_form": true
+        }
+      },
+      "min_role": 40,
+      "table": "bd_search_hit",
+      "slug": null,
+      "attributes": null,
+      "default_render_page": null,
+      "exttable_name": null
+    }
+  ],
+  "pages": [
+    {
+      "name": "curator_search",
+      "title": "Curator search",
+      "description": "Search Birddog pages and documents (core.search)",
+      "min_role": 40,
+      "layout": {
+        "above": [
+          {
+            "type": "blank",
+            "block": false,
+            "contents": "Search pages and documents",
+            "textStyle": "h3"
+          },
+          {
+            "name": "curator_search_form",
+            "type": "view",
+            "view": "curator_search_form",
+            "state": "shared"
+          },
+          {
+            "name": "curator_search_results",
+            "type": "view",
+            "view": "curator_search_results",
+            "state": "shared"
+          }
+        ]
+      },
+      "fixed_states": {},
+      "attributes": null,
+      "root_page_for_roles": []
+    }
+  ],
+  "page_groups": [],
+  "roles": [],
+  "library": [],
+  "triggers": [],
+  "tags": [],
+  "models": [],
+  "model_instances": [],
+  "event_logs": [],
+  "config": {
+    "menu_items": [
+      {
+        "href": "",
+        "icon": "fas fa-feather",
+        "text": "Curator",
+        "type": "Header",
+        "label": "Curator",
+        "style": "",
+        "target": "_self",
+        "tooltip": "",
+        "location": "Standard",
+        "max_role": "1",
+        "min_role": 40,
+        "subitems": [
+          {
+            "href": "",
+            "icon": "fas fa-search",
+            "text": "Search",
+            "type": "Page",
+            "label": "Search",
+            "style": "",
+            "target": "_self",
+            "tooltip": "",
+            "in_modal": false,
+            "location": "Standard",
+            "max_role": "1",
+            "min_role": 40,
+            "pagename": "curator_search",
+            "target_blank": false,
+            "disable_on_mobile": false
+          }
+        ]
+      }
+    ]
+  }
+}
