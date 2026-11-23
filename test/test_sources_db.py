@@ -47,9 +47,10 @@ def scratch_db():
         conn = psycopg2.connect(_dsn(SCRATCH))
         conn.autocommit = True
         with conn.cursor() as cur:
-            # the base schema plus the kit's migration (009-012 belong to other streams)
+            # the base schema plus the kit's migration (009-012 belong to other
+            # streams) and 014 (fp_error, which the jewishgen_sftp transform resets)
             for f in sorted(MIGRATIONS.glob("*.sql")):
-                if f.name[:3] <= "008" or f.name.startswith("013"):
+                if f.name[:3] <= "008" or f.name.startswith(("013", "014")):
                     cur.execute(f.read_text())
             cur.execute((MIGRATIONS / "013_source_kit.sql").read_text())   # re-runnable
         conn.close()
@@ -288,9 +289,9 @@ def test_sftp_example_transform(db):
     spec = load_spec(SOURCES / "jewishgen_sftp")
     db.execute("DELETE FROM core.ftp_entry")
     db.execute("""INSERT INTO core.ftp_entry (path, filename, folder, suffix, type, size, mtime, depth,
-                                               content_fp, match_checked) VALUES
-        ('/a/same.pdf', 'same.pdf', '/a', 'pdf', 'file', 10, '2026-01-01T00:00:00Z', 2, 'fp1', true),
-        ('/a/grew.pdf', 'grew.pdf', '/a', 'pdf', 'file', 10, '2026-01-01T00:00:00Z', 2, 'fp2', true)""")
+                                               content_fp, match_checked, fp_error) VALUES
+        ('/a/same.pdf', 'same.pdf', '/a', 'pdf', 'file', 10, '2026-01-01T00:00:00Z', 2, 'fp1', true, 'e1'),
+        ('/a/grew.pdf', 'grew.pdf', '/a', 'pdf', 'file', 10, '2026-01-01T00:00:00Z', 2, 'fp2', true, 'e2')""")
 
     def rec(path, kind, size, mtime):
         folder, _, fname = path.rpartition("/")
@@ -303,8 +304,8 @@ def test_sftp_example_transform(db):
                rec("/a/new.pdf", "file", 5, "2026-02-02T00:00:00+00:00")]
     runner.land(spec, records=listing)
     runner.transform(spec)
-    db.execute("SELECT path, size, content_fp, match_checked FROM core.ftp_entry ORDER BY path")
-    assert db.fetchall() == [("/a", None, None, False),
-                             ("/a/grew.pdf", 99, None, False),
-                             ("/a/new.pdf", 5, None, False),
-                             ("/a/same.pdf", 10, "fp1", True)]
+    db.execute("SELECT path, size, content_fp, match_checked, fp_error FROM core.ftp_entry ORDER BY path")
+    assert db.fetchall() == [("/a", None, None, False, None),
+                             ("/a/grew.pdf", 99, None, False, None),
+                             ("/a/new.pdf", 5, None, False, None),
+                             ("/a/same.pdf", 10, "fp1", True, "e1")]
