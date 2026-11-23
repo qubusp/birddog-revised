@@ -227,13 +227,13 @@ def write_results(results, summary):
                     summary["found"] += 1
                     summary["links_added"] += added
                     summary["links_removed"] += removed
-            cur.execute("""UPDATE core.document SET location_status = %s, last_birddog_update = now()
+            cur.execute("""UPDATE core.document SET location_status = %s
                            WHERE id = %s""", (status, doc_id))
 
 
 def mark_failed(doc_ids):
     with pg.connect() as conn, conn.cursor() as cur:
-        cur.execute("""UPDATE core.document SET location_status = 'failed', last_birddog_update = now()
+        cur.execute("""UPDATE core.document SET location_status = 'failed'
                        WHERE id = ANY(%s) AND location_status = 'pending'""", (list(doc_ids),))
         return cur.rowcount
 

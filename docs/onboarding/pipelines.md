@@ -73,6 +73,14 @@ Behaviour:
   that part is left out, and the summary counts it as `title_untranslated`.
 - Only English page descriptions (`core.page.description_en`) are used, as in
   the legacy code.
+- **Throughput** (measured on 294 real pending documents with a mocked LLM):
+  about 2 calls per 10 documents at worst (a second call for documents whose
+  first pass found no settlement), about 4,800 characters (~1,500 tokens) of
+  prompt plus up to ~500 output tokens per call. Per 1,000 documents: 100 to
+  200 calls, 150k to 300k tokens. Groq's listed limits for
+  `qwen/qwen3.8-27b` (30 RPM, 1k RPD, 8k TPM, 200k TPD) make the daily
+  token quota the bound: about 650 to 1,300 documents a day, so a run of 300
+  usually stops on the quota after a few hours and the rest wait.
 
 ## App-triggered DAGs (`dags/yaml/app.yml`)
 
