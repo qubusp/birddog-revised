@@ -199,6 +199,55 @@ RETURNING id
 """
 
 
+def write_page_info(cur, info):
+    """Writes one fetched page (info as returned by _form_page_info_from_title,
+    or page_info_from_wikitext for the dump backfill): the page, its child
+    pages (new ones are queued as stale), its parent link and its document
+    links. Returns the number of document links."""
+    record = {"native_description": "", "years": "", "timestamp": None, **info["record"]}
+    record["timestamp"] = record["timestamp"] or None
+    cur.execute(_PAGE_UPSERT, record)
+    page_id = cur.fetchone()[0]
+    if is_root_title(record["title"]):
+        register_archive_root(record["title"])
+
+    parent_title, children, red_children, doc_urls = classify_page_links(
+        record["title"], info.get("links", {}))
+    # new children are discovered here and refreshed on a later run
+    for child in children:
+        child_rec = _form_simple_page_record(child)
+        cur.execute(
+            """INSERT INTO core.page (url, title, domain, label, root_label, seq_label,
+                                      level, source_type, availability, stale)
+               VALUES (%(url)s, %(title)s, %(domain)s, %(label)s, %(root_label)s,
+                       %(seq_label)s, %(level)s, %(source_type)s, %(availability)s, true)
+               ON CONFLICT (url) DO NOTHING""",
+            child_rec)
+        cur.execute("UPDATE core.page SET parent_id = %s WHERE url = %s",
+                    (page_id, child_rec["url"]))
+    if parent_title:
+        cur.execute(
+            """UPDATE core.page SET parent_id = (SELECT id FROM core.page WHERE url = %s)
+               WHERE id = %s""",
+            (normalize_url(page_url_from_title(parent_title)), page_id))
+
+    # document links are replaced, so links removed on the wiki go away here too
+    cur.execute("DELETE FROM core.page_document WHERE page_id = %s", (page_id,))
+    for doc_url in doc_urls:
+        doc = form_document_record(doc_url)
+        cur.execute(
+            """INSERT INTO core.document (url, title, domain, wikisource_url)
+               VALUES (%(url)s, %(title)s, %(domain)s, %(wikisource_url)s)
+               ON CONFLICT (url) DO UPDATE SET title = EXCLUDED.title
+               RETURNING id""",
+            {"wikisource_url": None, **doc})
+        cur.execute(
+            """INSERT INTO core.page_document (page_id, document_id) VALUES (%s, %s)
+               ON CONFLICT DO NOTHING""",
+            (page_id, cur.fetchone()[0]))
+    return len(doc_urls)
+
+
 def refresh_pages(titles):
     """Fetches each page from the wiki and writes the page, its parent/child
     pages and its document links. Returns a summary dict."""
@@ -206,12 +255,11 @@ def refresh_pages(titles):
     for title in titles:
         info = _form_page_info_from_title(title)
         with pg.connect() as conn, conn.cursor() as cur:
-            record = info["record"]
             if info.get("missing"):
                 cur.execute(
                     """UPDATE core.page SET availability = 'unlinked', stale = false,
                               last_birddog_update = now() WHERE url = %s""",
-                    (record["url"],))
+                    (info["record"]["url"],))
                 summary["missing"] += 1
                 continue
             if info.get("error"):
@@ -219,49 +267,7 @@ def refresh_pages(titles):
                 _logger.warning(f"refresh_pages: {title}: {info['error']}")
                 summary["errors"] += 1
                 continue
-
-            record = {"native_description": "", "years": "", "timestamp": None, **record}
-            record["timestamp"] = record["timestamp"] or None
-            cur.execute(_PAGE_UPSERT, record)
-            page_id = cur.fetchone()[0]
-            if is_root_title(record["title"]):
-                register_archive_root(record["title"])
-
-            parent_title, children, red_children, doc_urls = classify_page_links(
-                record["title"], info.get("links", {}))
-            # new children are discovered here and refreshed on a later run
-            for child in children:
-                child_rec = _form_simple_page_record(child)
-                cur.execute(
-                    """INSERT INTO core.page (url, title, domain, label, root_label, seq_label,
-                                              level, source_type, availability, stale)
-                       VALUES (%(url)s, %(title)s, %(domain)s, %(label)s, %(root_label)s,
-                               %(seq_label)s, %(level)s, %(source_type)s, %(availability)s, true)
-                       ON CONFLICT (url) DO NOTHING""",
-                    child_rec)
-                cur.execute("UPDATE core.page SET parent_id = %s WHERE url = %s",
-                            (page_id, child_rec["url"]))
-            if parent_title:
-                cur.execute(
-                    """UPDATE core.page SET parent_id = (SELECT id FROM core.page WHERE url = %s)
-                       WHERE id = %s""",
-                    (normalize_url(page_url_from_title(parent_title)), page_id))
-
-            # document links are replaced, so links removed on the wiki go away here too
-            cur.execute("DELETE FROM core.page_document WHERE page_id = %s", (page_id,))
-            for doc_url in doc_urls:
-                doc = form_document_record(doc_url)
-                cur.execute(
-                    """INSERT INTO core.document (url, title, domain, wikisource_url)
-                       VALUES (%(url)s, %(title)s, %(domain)s, %(wikisource_url)s)
-                       ON CONFLICT (url) DO UPDATE SET title = EXCLUDED.title
-                       RETURNING id""",
-                    {"wikisource_url": None, **doc})
-                cur.execute(
-                    """INSERT INTO core.page_document (page_id, document_id) VALUES (%s, %s)
-                       ON CONFLICT DO NOTHING""",
-                    (page_id, cur.fetchone()[0]))
-            summary["docs"] += len(doc_urls)
+            summary["docs"] += write_page_info(cur, info)
             summary["refreshed"] += 1
     return summary
 

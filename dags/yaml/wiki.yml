@@ -68,3 +68,27 @@ refresh_doc_metadata:
       python_callable: birddog.dag_tasks.refresh_doc_metadata_batch
       expand:
         docs: +batches
+
+backfill_from_dump:
+  description: Loads every archive page from the Wikimedia dump instead of the API, then verifies a live sample
+  schedule: null
+  params:
+    dump_date: ""
+  default_args:
+    start_date: 2026-11-01
+    retries: 0
+    pool: default_pool
+  tasks:
+    - task_id: load
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks.load_wiki_dump
+      dump_date: "{{ params.dump_date }}"
+      outlets:
+        - __type__: airflow.sdk.Asset
+          uri: postgres://postgres:5432/birddog/core/document
+    - task_id: verify
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks.verify_wiki_dump
+      dump_date: "{{ params.dump_date }}"
+      pool: wiki_api
+      dependencies: [load]

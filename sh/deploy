@@ -38,6 +38,11 @@ ensure PUBLIC_DOMAIN 204-12-218-112.sslip.io
 ensure JUPYTERHUB_ADMIN_USER admin
 ensure JUPYTERHUB_ADMIN_PASSWORD "$(openssl rand -hex 12)"
 ensure JUPYTER_DB_PASSWORD "$(rnd)"
+ensure TOOLJET_DB_PASSWORD "$(rnd)"
+ensure TOOLJET_LOCKBOX_MASTER_KEY "$(openssl rand -hex 32)"
+ensure TOOLJET_SECRET_KEY_BASE "$(openssl rand -hex 64)"
+ensure SALTCORN_DB_PASSWORD "$(rnd)"
+ensure SALTCORN_SESSION_SECRET "$(openssl rand -hex 32)"
 
 # per-user notebook image JupyterHub spawns (build-only profile, never "up")
 docker compose --profile build-only build jupyter-singleuser
@@ -50,6 +55,10 @@ docker compose exec -T postgres bash /docker-entrypoint-initdb.d/02-ui.sh </dev/
 JUPYTER_DB_PASSWORD="$(grep '^JUPYTER_DB_PASSWORD=' .env | cut -d= -f2-)" \
     docker compose exec -T -e JUPYTER_DB_PASSWORD postgres \
     bash /docker-entrypoint-initdb.d/03-reader.sh </dev/null
+TOOLJET_DB_PASSWORD="$(grep '^TOOLJET_DB_PASSWORD=' .env | cut -d= -f2-)" \
+SALTCORN_DB_PASSWORD="$(grep '^SALTCORN_DB_PASSWORD=' .env | cut -d= -f2-)" \
+    docker compose exec -T -e TOOLJET_DB_PASSWORD -e SALTCORN_DB_PASSWORD postgres \
+    bash /docker-entrypoint-initdb.d/04-apps.sh </dev/null
 docker compose run --rm migrate </dev/null
 bash ui/setup.sh </dev/null
 docker compose ps --format 'table {{.Service}}\t{{.Status}}'

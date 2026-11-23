@@ -17,3 +17,14 @@ hub.{$PUBLIC_DOMAIN} {
 	encode zstd gzip
 	reverse_proxy jupyterhub:8000
 }
+
+# Low-code app builders (deploy/apps/README.md)
+apps.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy tooljet:3000
+}
+
+saltcorn.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy saltcorn:3000
+}

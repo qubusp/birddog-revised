@@ -121,3 +121,20 @@ def land_nocodb_table(table):
 def transform_nocodb():
     from birddog.nocodb_import import transform
     return transform()
+
+
+# --- dump backfill -----------------------------------------------------------
+
+def load_wiki_dump(dump_date=None):
+    from birddog.dump_backfill import load
+    return load(dump_date or None)
+
+
+def verify_wiki_dump(dump_date=None):
+    """Fails the DAG run if the dump-derived pages don't match a live sample."""
+    from birddog.dump_backfill import verify_sample
+    result = verify_sample(dump_date or None, size=300)
+    worst = min(result["match_percent"].values())
+    if worst < 98:
+        raise ValueError(f"dump doesn't match the live wiki well enough: {result}")
+    return result

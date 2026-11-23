@@ -214,6 +214,87 @@ services:
     image: birddog-jupyter-singleuser:local
     profiles: ["build-only"]
 
+  # Low-code app builders, compared side by side (deploy/apps/README.md).
+  # Each keeps its metadata in its own database on our Postgres (db/init/04-apps.sh)
+  # and reaches Birddog data as birddog_ui, added in-app as a datasource.
+  # ToolJet CE at apps.<PUBLIC_DOMAIN>. Redis is bundled in the image; PostgREST
+  # is not run, so the built-in "ToolJet Database" tables feature is unavailable.
+  tooljet:
+    image: tooljet/tooljet-ce:v3.20.256-lts
+    restart: unless-stopped
+    mem_limit: 1024m
+    command: ["npm", "run", "start:prod"]
+    environment:
+      TOOLJET_HOST: https://apps.${PUBLIC_DOMAIN}
+      SERVE_CLIENT: "true"
+      PORT: "3000"
+      LOCKBOX_MASTER_KEY: ${TOOLJET_LOCKBOX_MASTER_KEY}
+      SECRET_KEY_BASE: ${TOOLJET_SECRET_KEY_BASE}
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_DB: tooljet
+      PG_USER: tooljet
+      PG_PASS: ${TOOLJET_DB_PASSWORD}
+      # databases are pre-created by db/init/04-apps.sh; the role has no CREATEDB
+      PG_DB_OWNER: "false"
+      TOOLJET_DB: tooljet_db
+      TOOLJET_DB_HOST: postgres
+      TOOLJET_DB_PORT: "5432"
+      TOOLJET_DB_USER: tooljet
+      TOOLJET_DB_PASS: ${TOOLJET_DB_PASSWORD}
+      TOOLJET_DB_OWNER: "false"
+      # no per-workspace Postgres roles (would need CREATEROLE)
+      TJDB_SQL_MODE_DISABLE: "true"
+      SAMPLE_DB: tooljet_sample
+      DISABLE_TOOLJET_TELEMETRY: "true"
+      CHECK_FOR_UPDATES: "false"
+      NODE_OPTIONS: --max-old-space-size=768
+    ports:
+      - "127.0.0.1:8082:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 300s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Saltcorn at saltcorn.<PUBLIC_DOMAIN>. `serve -a` creates its schema in the
+  # empty saltcorn database on first start (non-destructive afterwards).
+  saltcorn:
+    image: saltcorn/saltcorn:1.6.4
+    restart: unless-stopped
+    mem_limit: 512m
+    command: ["serve", "-a"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: saltcorn
+      PGUSER: saltcorn
+      PGPASSWORD: ${SALTCORN_DB_PASSWORD}
+      SALTCORN_SESSION_SECRET: ${SALTCORN_SESSION_SECRET}
+      # one web worker (default is one per CPU) to stay within mem_limit
+      SALTCORN_NWORKERS: "1"
+      # postgres-tables plugin reads the remote password from SC_EXTPG_PASS_<db>,
+      # so the birddog_ui password need not be stored in Saltcorn
+      SC_EXTPG_PASS_birddog: ${BIRDDOG_UI_DB_PASSWORD}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:3000/auth/login"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    ports:
+      - "127.0.0.1:8083:3000"
+    volumes:
+      # uploaded files and installed plugins
+      - saltcorn-data:/root/.local/share/saltcorn-nodejs
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # Public HTTPS for Airflow, Mathesar and JupyterHub (the only ports open to the world)
   caddy:
     image: caddy:2.11.8
@@ -240,3 +321,4 @@ volumes:
   birddog-cache:
   mathesar-media:
   jupyterhub-data:
+  saltcorn-data:
