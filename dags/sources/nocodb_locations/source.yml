@@ -1,0 +1,60 @@
+# Worked example for the source kit: the NocoDB "Locations" table -> core.location.
+# Runs alongside the one-off import_nocodb DAG (dags/yaml/migration.yml), which
+# stays as it is; this source does the same for locations, but incrementally:
+# only records whose NocoDB content changed since the last run reach core, so a
+# re-run doesn't overwrite curator edits made in Mathesar since.
+name: nocodb_locations
+description: NocoDB Locations (STAGE base) landed as-is and upserted into core.location
+owner: birddog data team
+notes: |
+  Fetch: birddog.nocodb_import's paced v3 API client (NOCODB_IMPORT_TOKEN,
+  NOCODB_IMPORT_BASE from the Airflow environment), all records every run
+  (~1,200, ~13 requests). Records without a location_id are skipped by fetch.py.
+  Fields core.location doesn't store (region, latitude, longitude, *_town,
+  *_country, jewish_population, notes) stay in the payload and show up in
+  views.source__nocodb_locations.
+enabled: true
+schedule: null                 # trigger by hand while NocoDB is still the curators' tool
+tags: [nocodb, migration]
+
+fetch:
+  type: python
+  callable: fetch.py:fetch
+  table: Locations             # NocoDB table title
+
+key: location_id
+mode: full                     # every run returns the whole table
+watermark:
+  field: nocodb_id             # highest NocoDB record id seen (informational here)
+
+transform: transform.sql
+
+verify:
+  - check: landed
+    min: 1000                  # NocoDB had 1,201 locations at the migration
+    max_shrink: 0.1            # fail if the table lost more than 10% since the last run
+  - check: row_count
+    table: core.location
+    min: 1000
+  - check: null_rate
+    table: core.location
+    column: modern_location_name
+    max: 0.02
+  - check: sample_match
+    table: core.location
+    key_column: location_id
+    fields:
+      modern_location_name: modern_location_name
+      alternate_names: alternate_names
+      c1930_province: c1930_province
+      c2000_district: c2000_district
+    size: 200
+    min_percent: 95            # curators may have edited a few in core since
+
+produces:
+  - core/location
+
+view: true                     # views.source__nocodb_locations
+pool: default_pool
+retries: 1
+retry_delay_sec: 300
