@@ -1,0 +1,72 @@
+# On-demand work the web app starts through the Airflow REST API
+# (birddog/airflow_jobs.py): refresh a page from the wiki, translate a page,
+# check watchlists. Task code: birddog/dag_tasks_app.py. Unpaused on creation
+# so a triggered run starts without someone flipping the switch in the UI.
+default:
+  catchup: false
+  is_paused_upon_creation: false
+  default_args:
+    start_date: 2026-11-01
+    retries: 1
+    retry_delay_sec: 60
+  tags: [app]
+
+app_refresh_page:
+  description: Refreshes one page from the wiki; deep also walks its whole subtree
+  schedule: null
+  # different pages may refresh side by side; the wiki_api pool caps the load
+  max_active_runs: 4
+  params:
+    title: ""
+    deep: false
+    update_locations: false
+  default_args:
+    start_date: 2026-11-01
+    retries: 1
+    retry_delay_sec: 60
+    pool: wiki_api
+  tasks:
+    - task_id: page
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_app.refresh_page
+      title: "{{ params.title }}"
+      update_locations: "{{ params.update_locations }}"
+    - task_id: subtree
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_app.refresh_subtree
+      title: "{{ params.title }}"
+      deep: "{{ params.deep }}"
+      update_locations: "{{ params.update_locations }}"
+      dependencies: [page]
+
+app_translate_page:
+  description: Translates the descriptions shown on one page (cached per text)
+  schedule: null
+  max_active_runs: 4
+  params:
+    title: ""
+  tasks:
+    - task_id: translate
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_app.translate_page
+      title: "{{ params.title }}"
+
+app_watchlist_check:
+  description: Turns recorded wiki changes into watchlist alerts - one watch on demand, all after each wiki_changes run
+  # also runs whenever wiki_changes has recorded new changes
+  schedule:
+    - __type__: airflow.sdk.Asset
+      uri: postgres://postgres:5432/birddog/core/page
+  max_active_runs: 3
+  params:
+    email: ""
+    archive_title: ""
+  default_args:
+    start_date: 2026-11-01
+    retries: 0
+  tasks:
+    - task_id: check
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_app.check_watches
+      email: "{{ params.email }}"
+      archive_title: "{{ params.archive_title }}"

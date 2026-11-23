@@ -53,6 +53,7 @@
           <tr>
             <td>${t.kind ?? ''}</td>
             <td>${escapeHtml(t.description ?? '')}</td>
+            <td>${escapeHtml(t.state ?? '')}</td>
             <td>${t.total ?? ''}</td>
             <td>${t.completed ?? ''}</td>
             <td>${deep}</td>
@@ -70,7 +71,8 @@
             <tr>
               <th>Kind</th>
               <th>Description</th>
-              <th>Length</th>
+              <th>State</th>
+              <th>Steps</th>
               <th>Completed</th>
               <th>Deep</th>
               <th><span class="visually-hidden">Actions</span></th>

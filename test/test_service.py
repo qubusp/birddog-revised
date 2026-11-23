@@ -16,6 +16,9 @@ TEST_PASSWORD = "correct horse battery staple"
 
 
 class _RuntimeStub:
+    # legacy mode: no Postgres, no background job backend
+    reads_from_database = False
+
     def __init__(self, state="running"):
         self.state = state
 

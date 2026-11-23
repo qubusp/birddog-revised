@@ -174,6 +174,23 @@ def _load_preferences(email, preferences):
 _global_lock = Lock()
 _global_user_locks = {}
 
+def check_watch(email, title, runtime):
+    """Checks one watchlist entry (canonical title) for new changes, stores
+    them as unresolved items and returns all unresolved items. Changes come
+    from runtime.update_manager.get_updates(); the app_watchlist_check DAG
+    passes a feed over raw.wiki_change (birddog/change_feed.py). Raises
+    KeyError if the title isn't on the user's watchlist."""
+    watchlist_item = _get_watch_item(email, title)
+    unresolved = watcher.check_watcher(
+        email, title, runtime,
+        include=watchlist_item['include'],
+        cutoff_date=watchlist_item['cutoff_date'],
+        exclude=watchlist_item.get('exclude'))
+    watchlist_item["last_checked_date"] = _to_utc(utc_now_dt().strftime('%Y-%m-%dT%H:%M:%SZ'))
+    _save_watch_item(email, title, watchlist_item)
+    return unresolved
+
+
 class User:
     def __init__(self, name, email, password, runtime=None, watchlist=None, preferences=None, is_hashed=False, role="user"):
         self._name = name
@@ -259,15 +276,7 @@ class User:
 
     def _check_watchlist_item_locked(self, title):
         # caller holds self._lock; title is already canonical
-        watchlist_item = _get_watch_item(self.email, title)  # raises KeyError if not watched
-        unresolved = watcher.check_watcher(
-            self.email, title, self._runtime,
-            include=watchlist_item['include'],
-            cutoff_date=watchlist_item['cutoff_date'],
-            exclude=watchlist_item.get('exclude'))
-        watchlist_item["last_checked_date"] = _to_utc(utc_now_dt().strftime('%Y-%m-%dT%H:%M:%SZ'))
-        _save_watch_item(self.email, title, watchlist_item)
-        return unresolved
+        return check_watch(self.email, title, self._runtime)
 
     def _recheck_after_resolve(self, title, unresolved):
         # issue #158: a resolve acts on the unresolved entries the *last*
@@ -289,6 +298,16 @@ class User:
         with self._lock:
             unresolved = self._check_watchlist_item_locked(title)
 
+        if tree:
+            return watcher.unresolved_tree(unresolved)
+        return [{'name': k, **v} for k, v in unresolved.items()]
+
+    def stored_unresolved(self, title, tree=False):
+        """The unresolved items the last check stored (no new check: on the
+        Postgres stack checks run in Airflow, see check_watch)."""
+        title = canonicalize_title(title)
+        _get_watch_item(self.email, title)  # raises KeyError if not watched
+        unresolved = watcher.get_all_unresolved(self.email, title)
         if tree:
             return watcher.unresolved_tree(unresolved)
         return [{'name': k, **v} for k, v in unresolved.items()]

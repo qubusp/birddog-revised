@@ -173,8 +173,10 @@ function confirm_dialog(message) {
     });
 }
 
-const _TRANSLATE_POLL_INTERVAL_MS = 1000;
-const _TRANSLATE_NO_PROGRESS_TIMEOUT_MS = 15 * 1000; // give up if progress stalls for 15s
+const _TRANSLATE_POLL_INTERVAL_MS = 2000;
+// give up if progress stalls this long (a background run can wait in Airflow's
+// queue for a while before its first task starts)
+const _TRANSLATE_NO_PROGRESS_TIMEOUT_MS = 120 * 1000;
 let _translate_last_progress = null;
 let _translate_last_progress_at = null;
 
@@ -1338,6 +1340,26 @@ async function remove_from_watchlist(title) {
     }
 }
 
+const _WATCH_CHECK_POLL_MS = 2000;
+const _WATCH_CHECK_TIMEOUT_MS = 5 * 60 * 1000;
+
+// Starts a watchlist check. With the Airflow backend the server answers 202
+// {run_id} while the check runs; poll with that run_id until it answers with
+// the result (or an error).
+async function fetch_watchlist_check(title) {
+    const url = `/watchlist/${encodeURIComponent(title)}/check?tree`;
+    let response = await fetch(url);
+    const started = Date.now();
+    while (response.status === 202) {
+        const { run_id } = await response.json();
+        if (Date.now() - started > _WATCH_CHECK_TIMEOUT_MS)
+            throw new Error('Watchlist check timed out');
+        await new Promise(resolve => setTimeout(resolve, _WATCH_CHECK_POLL_MS));
+        response = await fetch(`${url}&run_id=${encodeURIComponent(run_id)}`);
+    }
+    return response;
+}
+
 async function check_watchlist(title, quiet=false, render=true) {
     console.log(`Checking ${title}...`);
     try {
@@ -1345,7 +1367,7 @@ async function check_watchlist(title, quiet=false, render=true) {
         show('unresolved-updates-loading-spinner');
         hide('unresolved-updates-container');
 
-        const response = await fetch(`/watchlist/${encodeURIComponent(title)}/check?tree`);
+        const response = await fetch_watchlist_check(title);
 
         if (response.status === 404) {
             if (!find_archive(title)) {

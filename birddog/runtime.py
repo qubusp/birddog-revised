@@ -353,6 +353,10 @@ class BackgroundJobs:
         """Running jobs, as {task_name: {...}} (the /database_update 'tasks')."""
         return {}
 
+    def active_translations(self):
+        """Running page translations, as [{name, completed, length}]."""
+        return []
+
     def cancel(self, task_name):
         raise KeyError(task_name)
 
@@ -581,6 +585,8 @@ class Runtime:
 
     @property
     def active_translations(self):
+        if self.reads_from_database:
+            return self._jobs.active_translations()
         return self._translation_manager.active_tasks()
 
     @property

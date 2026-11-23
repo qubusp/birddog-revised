@@ -27,6 +27,10 @@ from flask import (
 
 # Birddog packages
 from birddog.runtime import Runtime
+from birddog.airflow_client import AirflowError
+from birddog.airflow_jobs import AirflowJobs
+from birddog.wiki import canonicalize_title
+from birddog import pg
 from birddog import catalog
 from birddog.core import page_history
 from birddog.excel import list_templates, list_column_classes, default_column_header_map
@@ -725,9 +729,31 @@ def remove_from_watchlist(user, title):
 @app.route('/watchlist/<path:title>/check', methods=['GET'])
 @login_required
 def check_watchlist_item(user, title):
+    tree = request.args.get('tree') is not None
     try:
-        tree = request.args.get('tree') is not None
-        result = user.check_watchlist_item(title, tree=tree)
+        if not (runtime.reads_from_database and runtime.jobs.available):
+            # legacy runtime: check in-process against the page tracker
+            result = user.check_watchlist_item(title, tree=tree)
+        else:
+            # the check runs in Airflow (app_watchlist_check): start it, then
+            # the client polls with ?run_id until it has finished
+            run_id = request.args.get('run_id')
+            try:
+                if not run_id:
+                    user.stored_unresolved(title)  # KeyError if not watched
+                    run_id = runtime.jobs.request_watch_check(user.email, canonicalize_title(title))["dag_run_id"]
+                    state = "queued"
+                else:
+                    state = runtime.jobs.watch_check_state(run_id)
+            except AirflowError as err:
+                # alerts from the last scheduled check are still worth showing
+                _logger.warning(f'watchlist check unavailable for {title}: {err}')
+                state = "unavailable"
+            if state in ("queued", "running"):
+                return jsonify({'status': 'in-progress', 'run_id': run_id}), 202
+            if state == "failed":
+                return jsonify({'error': 'Watchlist check failed'}), 500
+            result = user.stored_unresolved(title, tree=tree)
 
         return jsonify({
             'success': True,
@@ -865,7 +891,11 @@ def translate(user):
     page_title = request.args.get('title')
     if page_title:
         # start new translation
-        runtime.request_translation(page_title)
+        try:
+            runtime.request_translation(page_title)
+        except AirflowError as err:
+            _logger.error(f'translation request failed: {err}')
+            return jsonify({'error': 'Background jobs unavailable'}), 503
     return jsonify({
         'enabled': runtime.translation_enabled,
         'available': runtime.translation_available,
@@ -901,6 +931,9 @@ def database_update(user):
             runtime.update_to_database(page_title, deep=deep, update_locations=update_locations)
         except ValueError as err:
             return jsonify({'error': str(err)}), 400
+        except AirflowError as err:
+            _logger.error(f'database update request failed: {err}')
+            return jsonify({'error': 'Background jobs unavailable'}), 503
     return jsonify({
         'title': page_title,
         'deep': deep,
@@ -909,7 +942,7 @@ def database_update(user):
         'tasks': _active_updates()}), 200
 
 @app.route('/database_cancel_task', methods=['POST'])
-@login_required
+@admin_required
 def database_cancel_task(user):
     task_name = request.args.get('task')
     if not task_name:
@@ -919,6 +952,9 @@ def database_cancel_task(user):
         return '', 200
     except KeyError:
         return jsonify({'error': f'Task not found: {task_name}'}), 404
+    except AirflowError as err:
+        _logger.error(f'cancel failed: {err}')
+        return jsonify({'error': 'Background jobs unavailable'}), 503
 
 @app.route('/database_status', methods=['GET'])
 @admin_required
@@ -1038,14 +1074,15 @@ def create_app():
 def start_runtime_once():
     global runtime
     if runtime is None:
-        runtime = Runtime()
+        # with Postgres, background work runs as Airflow DAG runs
+        runtime = Runtime(jobs=AirflowJobs() if pg.enabled() else None)
         runtime.start()
 
 # Required for WSGI: this is the callable Gunicorn or EB will look for
 if __name__ != "__main__":
     application = create_app()
     # Safe to start here: no reloader in production; runs once per worker.
-    if detect_environment() == "aws":
+    if detect_environment() == "aws" or pg.enabled():
         start_runtime_once()
 
 # Local development entry point
