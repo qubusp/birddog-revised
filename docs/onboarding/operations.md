@@ -6,11 +6,11 @@ Read this before you touch the server. The rules in it come from the owner.
 
 | Item | Value |
 |---|---|
-| SSH | `ssh administrator@204.12.218.112` (the default host in `sh/deploy`). Key-based login. |
+| SSH | Data box `ssh administrator@204.12.218.112` (the default host in `sh/deploy`); apps box `ssh administrator@108.181.191.55`. Key-based login only. See [two-box.md](../../deploy/two-box.md). |
 | Code | `~/birddog-revised/` on the server. **Not a git checkout.** Code arrives by rsync from your laptop. |
 | Compose | `~/birddog-revised/deploy/`. Run all `docker compose` commands from there. |
 | Containers | Project name `deploy`, so names look like `deploy-postgres-1`. |
-| Public sites | `https://<service>.204-12-218-112.sslip.io` for `airflow`, `data`, `hub`, `apps`, `saltcorn`, `birddog` (see [README.md](README.md#target-architecture)). |
+| Public sites | `https://airflow.204-12-218-112.sslip.io` (data box); `https://<service>.108-181-191-55.sslip.io` for `data`, `hub`, `apps`, `saltcorn`, `birddog` (apps box) (see [README.md](README.md#target-architecture)). |
 | Local ports | Bound to `127.0.0.1` on the server. Reach them with SSH tunnels (below). |
 
 Tunnels from your laptop:

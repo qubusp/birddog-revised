@@ -32,9 +32,13 @@ watchlist and export features to users.
 
 ## Target architecture
 
-One server, one Docker Compose project (`deploy/docker-compose.yml`, project
-name `deploy`). Public names are `<service>.204-12-218-112.sslip.io`, served by
-Caddy with Let's Encrypt certificates. Every other port is bound to `127.0.0.1`
+Two servers share one Docker Compose project (`deploy/docker-compose.yml`,
+project name `deploy`), each with its own override; see
+[deploy/two-box.md](../../deploy/two-box.md). The data box (204.12.218.112)
+runs Postgres and Airflow and serves `airflow.204-12-218-112.sslip.io`. The apps
+box (108.181.191.55) runs the web app and UI tools and serves
+`<service>.108-181-191-55.sslip.io`. They talk over a WireGuard link. Caddy on
+each box issues Let's Encrypt certificates. Every other port is bound to `127.0.0.1`
 and reached through an SSH tunnel.
 
 | Service | Image / code | Public host | Local port | Role |
