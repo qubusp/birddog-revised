@@ -1,0 +1,9 @@
+# Public HTTPS entry point. Certificates come from Let's Encrypt automatically.
+# Each app keeps its own login; nothing here adds or bypasses auth.
+# PUBLIC_DOMAIN is the base name, e.g. 204-12-218-112.sslip.io (set in .env).
+# Data box of the two-box deployment (docker-compose.databox.yml): Airflow only.
+
+airflow.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy airflow-apiserver:8080
+}

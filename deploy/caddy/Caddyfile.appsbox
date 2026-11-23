@@ -1,0 +1,33 @@
+# Public HTTPS entry point. Certificates come from Let's Encrypt automatically.
+# Each app keeps its own login; nothing here adds or bypasses auth.
+# PUBLIC_DOMAIN is the base name, e.g. 204-12-218-112.sslip.io (set in .env).
+# Apps box of the two-box deployment (docker-compose.appsbox.yml); Airflow's UI
+# stays on the data box, whose Caddy serves airflow.<its domain>.
+
+data.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy mathesar:8000
+}
+
+# JupyterHub (websockets for kernels are proxied by default)
+hub.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy jupyterhub:8000
+}
+
+# Low-code app builders (deploy/apps/README.md)
+apps.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy tooljet:3000
+}
+
+saltcorn.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy saltcorn:3000
+}
+
+# Birddog web app (deploy/web/README.md)
+birddog.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy birddog-web:8000
+}

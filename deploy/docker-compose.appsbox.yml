@@ -1,0 +1,45 @@
+# Apps box (108.181.191.55): the UI side of a two-box deployment.
+# Used as an override of docker-compose.yml via COMPOSE_FILE in this box's .env:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.appsbox.yml
+# Postgres and Airflow run on the data box and are reached over WireGuard
+# (10.77.0.1, see two-box.md); the compose names `postgres` and
+# `airflow-apiserver` resolve to it, so app configs need no changes.
+
+x-databox-hosts: &databox-hosts
+  extra_hosts:
+    - "postgres:10.77.0.1"
+    - "airflow-apiserver:10.77.0.1"
+
+services:
+  # data-box services: never started here
+  postgres: {profiles: [databox]}
+  migrate: {profiles: [databox]}
+  airflow-init: {profiles: [databox]}
+  airflow-apiserver: {profiles: [databox]}
+  airflow-scheduler: {profiles: [databox]}
+  airflow-dag-processor: {profiles: [databox]}
+
+  mathesar:
+    <<: *databox-hosts
+    depends_on: !reset []
+  jupyterhub:
+    <<: *databox-hosts
+    depends_on: !reset []
+    environment:
+      # passed on to the per-user notebook containers DockerSpawner starts
+      JUPYTER_EXTRA_HOSTS: "postgres:10.77.0.1"
+  tooljet:
+    <<: *databox-hosts
+    depends_on: !reset []
+  saltcorn:
+    <<: *databox-hosts
+    depends_on: !reset []
+  birddog-web:
+    <<: *databox-hosts
+    depends_on: !reset []
+  caddy:
+    depends_on: !reset []
+    volumes: !override
+      - ./caddy/Caddyfile.appsbox:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config

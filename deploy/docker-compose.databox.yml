@@ -1,0 +1,21 @@
+# Data box (204.12.218.112): Postgres + Airflow side of a two-box deployment.
+# Used as an override of docker-compose.yml via COMPOSE_FILE in this box's .env:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.databox.yml
+# The UI apps run on the apps box (docker-compose.appsbox.yml), which reaches
+# Postgres and the Airflow API over WireGuard (see two-box.md). Caddy here only
+# serves the Airflow UI.
+
+services:
+  # apps-box services: not started here (`--profile apps` would bring them back)
+  mathesar: {profiles: [apps]}
+  jupyterhub: {profiles: [apps]}
+  tooljet: {profiles: [apps]}
+  saltcorn: {profiles: [apps]}
+  birddog-web: {profiles: [apps]}
+
+  caddy:
+    depends_on: !reset [airflow-apiserver]
+    volumes: !override
+      - ./caddy/Caddyfile.databox:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config

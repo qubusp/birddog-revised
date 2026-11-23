@@ -66,6 +66,13 @@ c.DockerSpawner.volumes = {
     f"{host_repo}/resources": {"bind": "/home/jovyan/birddog-lib/resources", "mode": "ro"},
 }
 
+# two-box deployment: "postgres:10.77.0.1,..." maps names to the data box
+extra_hosts = env.get("JUPYTER_EXTRA_HOSTS", "")
+if extra_hosts:
+    c.DockerSpawner.extra_host_config = {
+        "extra_hosts": dict(h.split(":", 1) for h in extra_hosts.split(","))
+    }
+
 c.Spawner.mem_limit = "2G"
 c.Spawner.cpu_limit = 1.0
 c.Spawner.start_timeout = 120
