@@ -126,6 +126,10 @@ hand after a Mathesar upgrade.
 - `rsync --delete` stops (before copying anything) when it would delete more
   than 100 files: a sign of the wrong directory or branch.
 - `sh/deploy` only prints a pointer to the two scripts.
+- Airflow pools (`wiki_api`, `llm_api`) are created by `airflow-init`, which
+  `sh/deploy-data` runs only with `--restart-airflow`. A DAG that needs a new
+  pool waits in `scheduled` until it exists; create it without a restart:
+  `docker compose exec -T airflow-scheduler airflow pools set llm_api 1 'LLM API callers (location extraction)'`.
 
 ### A migration by hand
 
@@ -255,7 +259,8 @@ is not recorded in the repo.
 - `ui/setup.sh` (Mathesar admin and connection) is not run by any deploy script
   since the two-box split.
 - Translation settings (`BIRDDOG_USE_GOOGLE_CLOUD_TRANSLATE`, `GOOGLE_TRANSLATE_API_KEY`),
-  AWS credentials for `migrate_dynamodb_users` and `SFTP_PASSWORD` for
-  `source_jewishgen_sftp` are listed in `.env.example` but not set on the data
+  AWS credentials for `migrate_dynamodb_users`, `SFTP_PASSWORD` for
+  `source_jewishgen_sftp` and `match_ftp_documents`, and `GROQ_LOCATION_KEY` for
+  `locate_documents` are listed in `.env.example` but not set on the data
   box. Adding them changes `.env`, so the Airflow containers only see them after
   a recreate (`sh/deploy-data --restart-airflow`, with the owner's OK).

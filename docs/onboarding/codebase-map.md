@@ -29,7 +29,7 @@ Modules marked **legacy** are only used when `BIRDDOG_DATABASE_URL` is unset
 
 | Module | What it does |
 |---|---|
-| `catalog.py` | Read side of the web app: archives, pages (`page_payload()` builds the browse JSON from `core.*`), documents, search via `core.search()`. Read-only connections. `enabled()` is `pg.enabled()`. |
+| `catalog.py` | Read side of the web app: archives, pages (`page_payload()` builds the browse JSON from `core.*`), documents, search via `core.search()` (the web app's Search tab, `GET /search`, shown only when the app reads Postgres). Read-only connections. `enabled()` is `pg.enabled()`. |
 | `pg.py` | `BIRDDOG_DATABASE_URL` handling and `pg.connect()`, a connection per call that commits or rolls back. |
 | `app_db.py` | Small per-process connection pool for the `app.*` stores (store, log, user_store). |
 
@@ -50,7 +50,7 @@ Modules marked **legacy** are only used when `BIRDDOG_DATABASE_URL` is unset
 | `log.py` | `EventLogger` (request log) and `LogService` / service usage log, per backend. |
 | `user.py`, `user_store.py` | Accounts, watchlists, preferences. With the Postgres backend, `user_store.py` uses `app.user_account`, `app.watch`, `app.user_preference`. |
 | `cache.py` | Object cache for large payloads: local filesystem under `.cache/` or S3. Postgres backend means local filesystem. |
-| `watcher.py` | Watchlist change detection and alert state. Uses the store. |
+| `watcher.py` | Watchlist change detection and alert state. Uses the store; on Postgres the state lives in `app.watch.watcher` and `app.alert_state` through `alert_store.py` (migration 016), which copies old `app.kv` `bd_watchers` rows once on first use. |
 | `task.py` | `TaskManager` base class and task state, used by `translate.py`, `excel.py`, `database_updater.py`. |
 | `tracker.py` | Document and page tracker state. The trackers run in the legacy runtime, and `python -m birddog process_tracker_unknowns` uses it. **Legacy**. |
 | `timer.py` | Small timing helper, used by `nocodb_database.py`. **Legacy**. |
@@ -133,8 +133,8 @@ Kept for legacy mode, and for code that still imports them:
 
 On the server, `sh/deploy-data` applies new files before syncing code and
 records them in `public.schema_migrations`. The `migrate` service (`docker
-compose run --rm migrate`) re-runs all of them. Every file is written to be re-run. **010 does not exist**; the
-numbering goes 009 to 011.
+compose run --rm migrate`) re-runs all of them. Every file is written to be re-run. **010 and 015 do not exist**; the
+next free number is 017.
 
 | File | One line |
 |---|---|
@@ -150,6 +150,7 @@ numbering goes 009 to 011.
 | `011_app_users.sql` | `app.kv`, `app.string_queue`, `app.request_log`, `app.service_log`; adjusts `app.user_account` and `app.watch`. |
 | `012_web_role.sql` | Grants to `birddog_web`: read `core`, CRUD on `app`, write `core.archive_root`, nothing in `raw`. |
 | `013_source_kit.sql` | `raw.source_run`, `raw.source_record`, source-kit comments. |
+| `016_alert_state.sql` | `app.watch.watcher` (jsonb watcher header) and `app.alert_state.history` (jsonb resolve history), a trigger deriving `modified`, `last_resolved`, `significance`, `sig_span`; grants `core.search()` to `birddog_web`. |
 
 ### Legacy vs Postgres mode
 
@@ -171,6 +172,7 @@ Two environment switches decide the mode. They are separate, and they can disagr
 3. Otherwise `dynamodb` on AWS and `sqlite` locally.
 
 The trap: `BIRDDOG_STORE_BACKEND=sqlite` with `BIRDDOG_DATABASE_URL` set gives
-Postgres catalog reads with local SQLite app state. Nothing warns about it.
+Postgres catalog reads with local SQLite app state. The web app logs a warning
+at startup when the two disagree (`env.mode_mismatch()`, called from `service.py`).
 `birddog/database.py` (the output database) is always NocoDB; the Postgres
 pipeline writes through `pg.connect()` and does not use it.

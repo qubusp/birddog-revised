@@ -187,8 +187,9 @@ See [deploy/web/README.md](../../deploy/web/README.md) for the production setup.
 
 ### Migrations
 
-- File name `NNN_short_name.sql`, three digits. 010 is not used. Check the
-  directory (and open branches) before picking a number.
+- File name `NNN_short_name.sql`, three digits. 010 and 015 are not used; 014
+  and 016 are taken, so the next free number is 017. Check the directory (and
+  open branches) before picking a number.
 - `sh/deploy-data` applies each new file once and records it in
   `public.schema_migrations`, but files are still re-run: by the `migrate`
   service, by `sh/deploy-data --all-migrations`, and on every scratch database
