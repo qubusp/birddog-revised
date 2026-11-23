@@ -1,0 +1,29 @@
+# One-off: copy the old AWS web-app state (S3 accounts, DynamoDB watchlists,
+# preferences, watcher/KV state, optionally request/service logs) into
+# Postgres app.* (birddog/dynamo_migrate.py). Trigger by hand; dry run unless
+# "apply" is set. Safe to re-run: everything is an upsert.
+# Needs AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (and AWS_DEFAULT_REGION if
+# not us-east-2) in the Airflow environment.
+migrate_dynamodb_users:
+  description: Copies accounts, watchlists, preferences and KV/log state from AWS into app.*
+  schedule: null
+  catchup: false
+  max_active_runs: 1
+  default_args:
+    start_date: 2026-11-01
+    retries: 0
+  tags: [ops, migration]
+  params:
+    apply: false            # false = dry run (writes rolled back, counts reported)
+    include_logs: false
+    log_days: 30
+    source_env: ""          # CLOUD_PROD / CLOUD_STAGE; empty = BIRDDOG_NOCODB_ENV
+    kv_tables: [bd_watchers]
+  tasks:
+    - task_id: app_state
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_users.migrate_app_state
+    - task_id: logs
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_users.migrate_logs
+      dependencies: [app_state]
