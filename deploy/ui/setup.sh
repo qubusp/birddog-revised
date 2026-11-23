@@ -35,7 +35,10 @@ admin, created = User.objects.get_or_create(
     defaults={"is_superuser": True, "is_staff": True},
 )
 admin.is_superuser = admin.is_staff = True
-admin.set_password(env["MATHESAR_ADMIN_PASSWORD"])
+# set_password() rotates the session hash and logs the admin out everywhere,
+# so only touch it when the password in .env actually changed
+if not admin.check_password(env["MATHESAR_ADMIN_PASSWORD"]):
+    admin.set_password(env["MATHESAR_ADMIN_PASSWORD"])
 admin.save()
 print(("created" if created else "updated"), "admin user", admin.username)
 
