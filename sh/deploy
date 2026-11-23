@@ -35,13 +35,21 @@ ensure MATHESAR_SECRET_KEY "$(openssl rand -hex 32)"
 ensure MATHESAR_ADMIN_USER admin
 ensure MATHESAR_ADMIN_PASSWORD "$(openssl rand -hex 12)"
 ensure PUBLIC_DOMAIN 204-12-218-112.sslip.io
+ensure JUPYTERHUB_ADMIN_USER admin
+ensure JUPYTERHUB_ADMIN_PASSWORD "$(openssl rand -hex 12)"
+ensure JUPYTER_DB_PASSWORD "$(rnd)"
 
+# per-user notebook image JupyterHub spawns (build-only profile, never "up")
+docker compose --profile build-only build jupyter-singleuser
 docker compose up -d --build
-# Curator UI roles need CREATEROLE, so they're made as postgres (idempotent; on
+# Curator UI and notebook-reader roles need CREATEROLE, so they're made as postgres (idempotent; on
 # a fresh volume initdb already ran this). Then re-apply the migrations so
-# 004_ui_role.sql grants to the now-existing role, and configure Mathesar.
+# 004_ui_role.sql / 007_reader_role.sql grant to the now-existing roles, and configure Mathesar.
 # (</dev/null: these must not eat the rest of this script from stdin)
 docker compose exec -T postgres bash /docker-entrypoint-initdb.d/02-ui.sh </dev/null
+JUPYTER_DB_PASSWORD="$(grep '^JUPYTER_DB_PASSWORD=' .env | cut -d= -f2-)" \
+    docker compose exec -T -e JUPYTER_DB_PASSWORD postgres \
+    bash /docker-entrypoint-initdb.d/03-reader.sh </dev/null
 docker compose run --rm migrate </dev/null
 bash ui/setup.sh </dev/null
 docker compose ps --format 'table {{.Service}}\t{{.Status}}'

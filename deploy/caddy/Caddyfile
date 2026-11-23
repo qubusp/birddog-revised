@@ -11,3 +11,9 @@ data.{$PUBLIC_DOMAIN} {
 	encode zstd gzip
 	reverse_proxy mathesar:8000
 }
+
+# JupyterHub (websockets for kernels are proxied by default)
+hub.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy jupyterhub:8000
+}

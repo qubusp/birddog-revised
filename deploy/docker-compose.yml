@@ -49,6 +49,9 @@ services:
   postgres:
     image: postgres:16
     restart: unless-stopped
+    # memory limits on every service (no swap on the host) keep one runaway
+    # container from getting Postgres OOM-killed
+    mem_limit: 1536m
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD}
@@ -71,6 +74,7 @@ services:
   # idempotent, so re-running is safe.
   migrate:
     image: postgres:16
+    mem_limit: 256m
     environment:
       PGHOST: postgres
       PGUSER: birddog
@@ -85,6 +89,7 @@ services:
 
   airflow-init:
     <<: *airflow-common
+    mem_limit: 512m
     entrypoint: /bin/bash
     # wiki_api pool: caps concurrent MediaWiki callers across all DAGs
     command: ["-c", "/entrypoint airflow version && /entrypoint airflow pools set wiki_api 3 'MediaWiki API callers'"]
@@ -100,6 +105,7 @@ services:
     <<: *airflow-common
     command: api-server
     restart: unless-stopped
+    mem_limit: 768m
     ports:
       - "127.0.0.1:8080:8080"
     healthcheck:
@@ -117,6 +123,8 @@ services:
     <<: *airflow-common
     command: scheduler
     restart: unless-stopped
+    # task processes (LocalExecutor) run inside the scheduler container
+    mem_limit: 1536m
     depends_on:
       <<: *airflow-depends
       airflow-init:
@@ -128,6 +136,7 @@ services:
     <<: *airflow-common
     command: dag-processor
     restart: unless-stopped
+    mem_limit: 512m
     depends_on:
       <<: *airflow-depends
       airflow-init:
@@ -140,6 +149,7 @@ services:
   mathesar:
     image: mathesar/mathesar:0.12.0
     restart: unless-stopped
+    mem_limit: 512m
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.production
       SECRET_KEY: ${MATHESAR_SECRET_KEY}
@@ -164,10 +174,51 @@ services:
       postgres:
         condition: service_healthy
 
-  # Public HTTPS for Airflow and Mathesar (the only ports open to the world)
+  # Shared notebooks (hub.<PUBLIC_DOMAIN>): JupyterHub with its own sign-up +
+  # admin approval; each user gets a container from jupyter-singleuser (2 GB,
+  # 1 CPU) on this network, connecting to Postgres as read-only birddog_reader.
+  # The hub drives the host Docker daemon (socket mount) -- see
+  # jupyterhub/README.md for what that implies.
+  jupyterhub:
+    build:
+      context: ..
+      dockerfile: deploy/jupyterhub/Dockerfile
+    image: birddog-jupyterhub:local
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      JUPYTERHUB_ADMIN_USER: ${JUPYTERHUB_ADMIN_USER:-admin}
+      JUPYTERHUB_ADMIN_PASSWORD: ${JUPYTERHUB_ADMIN_PASSWORD}
+      JUPYTER_DB_PASSWORD: ${JUPYTER_DB_PASSWORD}
+      JUPYTER_SINGLEUSER_IMAGE: birddog-jupyter-singleuser:local
+      # compose's default network for project "deploy"
+      DOCKER_NETWORK_NAME: deploy_default
+      # host path of the repo; the host Docker daemon bind-mounts birddog/ and
+      # resources/ from here into users' containers
+      BIRDDOG_HOST_REPO: ${BIRDDOG_HOST_REPO:-/home/administrator/birddog-revised}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - jupyterhub-data:/data
+    ports:
+      - "127.0.0.1:8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Build-only: the per-user notebook image the hub spawns. Never started by
+  # compose (profile); sh/deploy builds it before `up`.
+  jupyter-singleuser:
+    build:
+      context: ..
+      dockerfile: deploy/jupyterhub/singleuser.Dockerfile
+    image: birddog-jupyter-singleuser:local
+    profiles: ["build-only"]
+
+  # Public HTTPS for Airflow, Mathesar and JupyterHub (the only ports open to the world)
   caddy:
     image: caddy:2.11.8
     restart: unless-stopped
+    mem_limit: 128m
     env_file: .env
     ports:
       - "80:80"
@@ -188,3 +239,4 @@ volumes:
   airflow-logs:
   birddog-cache:
   mathesar-media:
+  jupyterhub-data:
