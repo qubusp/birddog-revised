@@ -1,0 +1,23 @@
+# Enrichment of refreshed data through external APIs (not the wiki).
+default:
+  catchup: false
+  max_active_runs: 1
+  default_args:
+    start_date: 2026-11-01
+    retries: 2
+    retry_delay_sec: 300
+  tags: [enrich]
+
+translate:
+  description: Translates new Ukrainian descriptions to English (cached per text)
+  schedule: "0 5 * * *"
+  tasks:
+    - task_id: batches
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks.untranslated_batches
+    - task_id: run
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks.translate_batch
+      max_active_tis_per_dag: 2
+      expand:
+        pages: +batches

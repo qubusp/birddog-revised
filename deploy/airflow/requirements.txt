@@ -12,3 +12,4 @@ rapidfuzz>=2.6.1
 psutil
 boto3
 google-cloud-translate==3.23.0
+dag-factory==1.1.0

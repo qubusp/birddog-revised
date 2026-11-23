@@ -1,0 +1,70 @@
+# Wiki pipeline: recent changes -> stale pages -> page refresh -> file metadata.
+# Nothing here is real time: changes are read once a day. Downstream DAGs run
+# when the table they depend on has been updated (assets), and hourly as a
+# fallback so a backlog (e.g. the first full backfill) keeps draining. All wiki
+# API calls share the wiki_api pool to stay within MediaWiki's rate limits.
+default:
+  catchup: false
+  max_active_runs: 1
+  default_args:
+    start_date: 2026-11-01
+    retries: 2
+    retry_delay_sec: 120
+    pool: wiki_api
+  tags: [wiki]
+
+wiki_changes:
+  description: Reads the day's wiki changes and marks those pages stale
+  schedule: "0 3 * * *"
+  tasks:
+    - task_id: ingest
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks.ingest_recent_changes
+      outlets:
+        - __type__: airflow.sdk.Asset
+          uri: postgres://postgres:5432/birddog/core/page
+
+refresh_pages:
+  description: Refreshes stale pages, their parent/child pages and document links
+  schedule:
+    __type__: airflow.timetables.assets.AssetOrTimeSchedule
+    timetable:
+      __type__: airflow.timetables.trigger.CronTriggerTimetable
+      cron: "15 * * * *"
+      timezone: UTC
+    assets:
+      - __type__: airflow.sdk.Asset
+        uri: postgres://postgres:5432/birddog/core/page
+  tasks:
+    - task_id: batches
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks.stale_page_batches
+    - task_id: refresh
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks.refresh_page_batch
+      expand:
+        titles: +batches
+      outlets:
+        - __type__: airflow.sdk.Asset
+          uri: postgres://postgres:5432/birddog/core/document
+
+refresh_doc_metadata:
+  description: Fills in MediaWiki file metadata for new documents
+  schedule:
+    __type__: airflow.timetables.assets.AssetOrTimeSchedule
+    timetable:
+      __type__: airflow.timetables.trigger.CronTriggerTimetable
+      cron: "45 * * * *"
+      timezone: UTC
+    assets:
+      - __type__: airflow.sdk.Asset
+        uri: postgres://postgres:5432/birddog/core/document
+  tasks:
+    - task_id: batches
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks.doc_metadata_batches
+    - task_id: fetch
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks.refresh_doc_metadata_batch
+      expand:
+        docs: +batches

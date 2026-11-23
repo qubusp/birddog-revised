@@ -1,0 +1,23 @@
+# One-off: pull the NocoDB base into Postgres (birddog/nocodb_import.py).
+# Trigger by hand; safe to re-run (it refreshes the landed copy and upserts).
+import_nocodb:
+  description: Lands NocoDB Pages/Documents/FTP Site/Locations and loads them into core
+  schedule: null
+  catchup: false
+  max_active_runs: 1
+  default_args:
+    start_date: 2026-11-01
+    retries: 1
+    retry_delay_sec: 300
+  tags: [ops, migration]
+  tasks:
+    - task_id: land
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks.land_nocodb_table
+      max_active_tis_per_dag: 1
+      expand:
+        table: [pages, documents, ftp, locations]
+    - task_id: transform
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks.transform_nocodb
+      dependencies: [land]
