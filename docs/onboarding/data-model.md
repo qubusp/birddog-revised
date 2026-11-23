@@ -54,7 +54,7 @@ Each view is a queue. A DAG or a curator works through the rows it returns.
 | `core.v_untranslated` | pages with Ukrainian text and no `description_en` | `translate` DAG and `app_translate_page` |
 | `core.v_docs_no_meta` | documents with no sha1 from wiki-hosted or Commons domains, not failed | `refresh_doc_metadata` DAG (defined in 002, redefined in 003) |
 | `core.v_docs_need_dupe_check` | documents with sha1 not yet dupe-checked | `link_duplicates` DAG |
-| `core.v_docs_no_location` | documents with `location_status = 'pending'` | **no consumer found**; set by `app_refresh_page` with `update_locations` |
+| `core.v_docs_no_location` | documents with `location_status = 'pending'` (set by `refresh_doc_metadata` for new documents and by `app_refresh_page` with `update_locations`) | `locate_documents` DAG |
 | `core.v_ftp_need_match` | FTP files not yet matched | `match_ftp_documents` DAG (its `reconcile` step also puts checked files back) |
 
 ## app

@@ -77,7 +77,7 @@ Kept for legacy mode, and for code that still imports them:
 | `abstract_database.py` | The `Database` interface and error types. Shared by old and new code (`InvalidRecordId` is imported by `database_updater.py`). |
 | `database_importer.py` | Spreadsheet/NocoDB importer. Imported by `test/test_importer.py` and `notebooks/Import Tests.ipynb`; still being changed (DACHKO imports). Kept. |
 | `ftp.py` | `FTPSiteManager`: FTP listing and matching against NocoDB. **Legacy** (the replacement is the source kit). |
-| `locations/` | Experimental location tools (`matcher.py`, `finder.py`, `extractor.py`, `manager.py`). Manager writes NocoDB status fields. Not run by Airflow. |
+| `locations/` | Location finder: `extractor.py` (LLM client, Groq), `matcher.py` (fuzzy match to `core.location`), `finder.py` (per-document logic). `pg_store.py` runs it over `core.*` for the `locate_documents` DAG; `manager.py` is the legacy NocoDB runner. |
 | `google_drive_procs.py`, `download_convert_to_pdf.py` | Standalone scripts (`python -m birddog.<name>`), not imported by anything. Kept: they are tools someone runs by hand (Drive spreadsheet download, page images to PDF). `google_drive_procs` needs `google-api-python-client` and `google-auth-oauthlib`, which are in no requirements file. |
 | `doc_compare/` | PDF and image comparison helpers. Only `test/test_compare_pdfs.py` imports them; no runtime caller yet. Kept as the candidate content check for duplicate documents. |
 | `dynamo_migrate.py` | Only the one-off AWS copy (see above). |

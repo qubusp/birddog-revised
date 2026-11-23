@@ -38,6 +38,12 @@ app_refresh_page:
       deep: "{{ params.deep }}"
       update_locations: "{{ params.update_locations }}"
       dependencies: [page]
+      # starts locate_documents (dags/yaml/locations.yml), which drains the
+      # documents update_locations put back to 'pending' (without
+      # update_locations it is just an early regular run of that DAG)
+      outlets:
+        - __type__: airflow.sdk.Asset
+          uri: postgres://postgres:5432/birddog/core/v_docs_no_location
 
 app_translate_page:
   description: Translates the descriptions shown on one page (cached per text)
