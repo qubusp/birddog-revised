@@ -1,74 +1,14 @@
 #!/bin/bash
-# Usage: sh/deploy [user@host]
-# Syncs the repo to the server and (re)builds the stack. Creates deploy/.env with
-# random secrets on the server the first time.
-set -euo pipefail
-
-HOST="${1:-administrator@204.12.218.112}"
-DIR=birddog-revised
-
-rsync -az --delete \
-    --exclude .git --exclude __pycache__ --exclude '*.pyc' \
-    --exclude notebooks --exclude research --exclude deploy/.env \
-    --exclude 'deploy/rclone/*.conf' --exclude .cache --exclude '.venv*' --exclude 'venv*' \
-    --exclude graphify-out \
-    ./ "$HOST:$DIR/"
-
-ssh "$HOST" "cd $DIR/deploy && bash -s" <<'EOF'
-set -euo pipefail
-# Create deploy/.env on first deploy; on later deploys only append keys that
-# are missing (new services), never regenerating existing secrets.
-[ -f .env ] || { touch .env; echo "created deploy/.env"; }
-chmod 600 .env
-rnd() { openssl rand -hex 24; }
-ensure() {  # ensure KEY VALUE
-    grep -q "^$1=" .env || { echo "$1=$2" >> .env; echo "added $1 to deploy/.env"; }
-}
-ensure POSTGRES_PASSWORD "$(rnd)"
-ensure AIRFLOW_DB_PASSWORD "$(rnd)"
-ensure BIRDDOG_DB_PASSWORD "$(rnd)"
-ensure FERNET_KEY "$(openssl rand -base64 32 | tr '+/' '-_')"
-ensure JWT_SECRET "$(rnd)"
-ensure AIRFLOW_ADMIN_USER admin
-ensure AIRFLOW_ADMIN_PASSWORD "$(openssl rand -hex 12)"
-ensure BIRDDOG_UI_DB_PASSWORD "$(rnd)"
-ensure MATHESAR_DB_PASSWORD "$(rnd)"
-ensure MATHESAR_SECRET_KEY "$(openssl rand -hex 32)"
-ensure MATHESAR_ADMIN_USER admin
-ensure MATHESAR_ADMIN_PASSWORD "$(openssl rand -hex 12)"
-ensure PUBLIC_DOMAIN 204-12-218-112.sslip.io
-ensure JUPYTERHUB_ADMIN_USER admin
-ensure JUPYTERHUB_ADMIN_PASSWORD "$(openssl rand -hex 12)"
-ensure JUPYTER_DB_PASSWORD "$(rnd)"
-ensure TOOLJET_DB_PASSWORD "$(rnd)"
-ensure TOOLJET_LOCKBOX_MASTER_KEY "$(openssl rand -hex 32)"
-ensure TOOLJET_SECRET_KEY_BASE "$(openssl rand -hex 64)"
-ensure SALTCORN_DB_PASSWORD "$(rnd)"
-ensure SALTCORN_SESSION_SECRET "$(openssl rand -hex 32)"
-ensure BIRDDOG_SECRET_KEY "$(openssl rand -hex 32)"
-ensure BIRDDOG_WEB_DB_PASSWORD "$(rnd)"
-ensure AIRFLOW_API_USER birddog-web
-ensure AIRFLOW_API_PASSWORD "$(rnd)"
-
-# per-user notebook image JupyterHub spawns (build-only profile, never "up")
-docker compose --profile build-only build jupyter-singleuser
-docker compose up -d --build
-# Curator UI and notebook-reader roles need CREATEROLE, so they're made as postgres (idempotent; on
-# a fresh volume initdb already ran this). Then re-apply the migrations so
-# 004_ui_role.sql / 007_reader_role.sql grant to the now-existing roles, and configure Mathesar.
-# (</dev/null: these must not eat the rest of this script from stdin)
-docker compose exec -T postgres bash /docker-entrypoint-initdb.d/02-ui.sh </dev/null
-JUPYTER_DB_PASSWORD="$(grep '^JUPYTER_DB_PASSWORD=' .env | cut -d= -f2-)" \
-    docker compose exec -T -e JUPYTER_DB_PASSWORD postgres \
-    bash /docker-entrypoint-initdb.d/03-reader.sh </dev/null
-TOOLJET_DB_PASSWORD="$(grep '^TOOLJET_DB_PASSWORD=' .env | cut -d= -f2-)" \
-SALTCORN_DB_PASSWORD="$(grep '^SALTCORN_DB_PASSWORD=' .env | cut -d= -f2-)" \
-    docker compose exec -T -e TOOLJET_DB_PASSWORD -e SALTCORN_DB_PASSWORD postgres \
-    bash /docker-entrypoint-initdb.d/04-apps.sh </dev/null
-BIRDDOG_WEB_DB_PASSWORD="$(grep '^BIRDDOG_WEB_DB_PASSWORD=' .env | cut -d= -f2-)" \
-    docker compose exec -T -e BIRDDOG_WEB_DB_PASSWORD postgres \
-    bash /docker-entrypoint-initdb.d/05-web.sh </dev/null
-docker compose run --rm migrate </dev/null
-bash ui/setup.sh </dev/null
-docker compose ps --format 'table {{.Service}}\t{{.Status}}'
+# Replaced by two scripts, one per box (deploy/two-box.md):
+#   sh/deploy-data [--dry-run] [host]   data box: migrations, code; never restarts
+#                                       Postgres or Airflow without a --restart-* flag
+#   sh/deploy-apps [--dry-run] [host]   apps box: code, image builds, docker compose up -d
+# The old single-box script ran `docker compose up -d` on the data box, which
+# recreates Postgres and Airflow whenever deploy/.env or their config changed.
+cat >&2 <<'EOF'
+sh/deploy is gone. Use, from the repo root:
+  sh/deploy-data --dry-run    then  sh/deploy-data     (204.12.218.112: migrations + code)
+  sh/deploy-apps --dry-run    then  sh/deploy-apps     (108.181.191.55: web app and UI tools)
+See docs/onboarding/operations.md.
 EOF
+exit 2

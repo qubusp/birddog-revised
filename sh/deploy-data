@@ -1,0 +1,211 @@
+#!/bin/bash
+# Usage: sh/deploy-data [options] [user@host]     (default administrator@204.12.218.112)
+#
+# Deploys to the data box (Postgres + Airflow; deploy/two-box.md):
+#   1. checks the box: the repo is there and deploy/.env selects the data-box
+#      override (refuses to run against the apps box)
+#   2. adds missing deploy/.env keys (random values made on the server)
+#   3. applies new migrations as birddog, BEFORE any code is synced, streaming
+#      the local files into psql; applied files are recorded in
+#      public.schema_migrations (created here if missing)
+#   4. rsyncs the repo (DAGs and birddog/ are bind-mounted: no restart needed)
+#   5. reports which of postgres / airflow-* no longer match the compose config
+#      or their image, and leaves them alone unless --restart-airflow or
+#      --restart-postgres is given (the owner's OK is needed for those)
+#   6. restarts Caddy (allowed) when its config changed
+#
+# Options:
+#   --restart-airflow   rebuild the Airflow image, run airflow-init, and
+#                       recreate the airflow-* services that changed.
+#                       ONLY WITH THE OWNER'S EXPLICIT OK.
+#   --restart-postgres  recreate postgres if its config or image changed.
+#                       ONLY WITH THE OWNER'S EXPLICIT OK.
+#   --all-migrations    re-apply every migration (they are idempotent), not
+#                       only new ones; use after editing an applied file
+#   --init-roles        re-run the role scripts db/init/02-ui.sh, 03-reader.sh,
+#                       05-web.sh as postgres (creates missing roles, re-syncs
+#                       their passwords from .env). Needed once on a new box.
+set -euo pipefail
+# shellcheck source=lib/deploy-common.sh
+. "$(dirname "$0")/lib/deploy-common.sh"
+
+RESTART_AIRFLOW=0
+RESTART_POSTGRES=0
+ALL_MIGRATIONS=0
+INIT_ROLES=0
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=1 ;;
+        --restart-airflow) RESTART_AIRFLOW=1 ;;
+        --restart-postgres) RESTART_POSTGRES=1 ;;
+        --all-migrations) ALL_MIGRATIONS=1 ;;
+        --init-roles) INIT_ROLES=1 ;;
+        -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; usage_common; exit 0 ;;
+        -*) die "unknown option $arg (see --help)" ;;
+        *) [ -z "$HOST" ] || die "one host only"; HOST=$arg ;;
+    esac
+done
+HOST="${HOST:-administrator@204.12.218.112}"
+OVERRIDE=docker-compose.databox.yml
+AIRFLOW_SERVICES=(airflow-apiserver airflow-scheduler airflow-dag-processor)
+
+# keys this box's services and init scripts read
+ENV_SPEC="COMPOSE_FILE literal:docker-compose.yml:$OVERRIDE
+POSTGRES_PASSWORD hex24
+AIRFLOW_DB_PASSWORD hex24
+BIRDDOG_DB_PASSWORD hex24
+FERNET_KEY fernet
+JWT_SECRET hex24
+AIRFLOW_ADMIN_USER literal:admin
+AIRFLOW_ADMIN_PASSWORD hex12
+PUBLIC_DOMAIN literal:204-12-218-112.sslip.io
+BIRDDOG_UI_DB_PASSWORD hex24
+MATHESAR_DB_PASSWORD hex24
+JUPYTER_DB_PASSWORD hex24
+BIRDDOG_WEB_DB_PASSWORD hex24
+AIRFLOW_API_USER literal:birddog-web
+AIRFLOW_API_PASSWORD hex24"
+
+check_local_repo
+ssh_setup
+[ "$DRY_RUN" = 1 ] && say "DRY RUN: nothing on $HOST will change"
+
+say "Checking $HOST"
+check_remote_box "$OVERRIDE"
+info "ok: $REMOTE_DIR/deploy, $OVERRIDE"
+
+say "deploy/.env"
+ensure_env "$ENV_SPEC"
+
+# --- migrations ---------------------------------------------------------------
+psql_birddog() {   # psql as birddog over the container's local socket (trust)
+    remote "docker compose exec -T postgres psql -U birddog -d birddog -X -q -v ON_ERROR_STOP=1 $*"
+}
+sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+
+apply_migrations() {
+    say "Migrations"
+    if ! remote "docker compose exec -T postgres pg_isready -q -U postgres" 2>/dev/null; then
+        info "postgres is not running; skipped (a first start runs them via the migrate service)"
+        return 0
+    fi
+    local applied="" have_table
+    have_table=$(psql_birddog "-At -c \"SELECT to_regclass('public.schema_migrations') IS NOT NULL\"")
+    if [ "$have_table" = t ]; then
+        applied=$(psql_birddog "-At -F ' ' -c 'SELECT filename, checksum FROM public.schema_migrations'")
+    else
+        info "public.schema_migrations does not exist yet: every file counts as new"
+        info "(they are idempotent; the migrate service re-ran them on every up)"
+    fi
+
+    local f name sum recorded pending=()
+    for f in "$REPO_ROOT"/deploy/db/migrations/*.sql; do
+        name=$(basename "$f")
+        [[ "$name" =~ ^[0-9]{3}_[A-Za-z0-9_]+\.sql$ ]] || die "unexpected migration file name: $name"
+        sum=$(sha256 "$f")
+        recorded=$(awk -v n="$name" '$1 == n {print $2}' <<< "$applied")
+        if [ -z "$recorded" ] || [ "$ALL_MIGRATIONS" = 1 ]; then
+            pending+=("$f")
+        elif [ "$recorded" != "$sum" ]; then
+            info "WARNING $name changed since it was applied; not re-applied (--all-migrations re-runs every file)"
+        fi
+    done
+    if [ ${#pending[@]} -eq 0 ]; then
+        info "none pending"
+        return 0
+    fi
+    if [ "$DRY_RUN" = 1 ]; then
+        for f in "${pending[@]}"; do info "would apply $(basename "$f")"; done
+        return 0
+    fi
+    psql_birddog >/dev/null <<'SQL'
+CREATE TABLE IF NOT EXISTS public.schema_migrations (
+    filename   text PRIMARY KEY,
+    checksum   text NOT NULL,
+    applied_at timestamptz NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE public.schema_migrations IS
+    'deploy/db/migrations files applied by sh/deploy-data (file name, sha256)';
+SQL
+    for f in "${pending[@]}"; do
+        name=$(basename "$f")
+        info "applying $name"
+        # the record is written only if every statement of the file succeeded
+        { cat "$f"; printf '\n'
+          printf "INSERT INTO public.schema_migrations (filename, checksum) VALUES ('%s', '%s')\n" "$name" "$(sha256 "$f")"
+          printf "ON CONFLICT (filename) DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = now();\n"
+        } | psql_birddog || die "$name failed; nothing after it was applied, and the code was not synced"
+    done
+}
+
+init_roles() {
+    say "Role scripts (as postgres)"
+    if [ "$DRY_RUN" = 1 ]; then
+        info "would run db/init/02-ui.sh, 03-reader.sh, 05-web.sh"
+        return 0
+    fi
+    # passwords travel in the exec environment, read from .env on the server
+    remote "docker compose exec -T postgres bash /docker-entrypoint-initdb.d/02-ui.sh </dev/null"
+    remote "JUPYTER_DB_PASSWORD=\"\$(sed -n 's/^JUPYTER_DB_PASSWORD=//p' .env)\" \
+        docker compose exec -T -e JUPYTER_DB_PASSWORD postgres bash /docker-entrypoint-initdb.d/03-reader.sh </dev/null"
+    remote "BIRDDOG_WEB_DB_PASSWORD=\"\$(sed -n 's/^BIRDDOG_WEB_DB_PASSWORD=//p' .env)\" \
+        docker compose exec -T -e BIRDDOG_WEB_DB_PASSWORD postgres bash /docker-entrypoint-initdb.d/05-web.sh </dev/null"
+}
+
+[ "$INIT_ROLES" = 1 ] && init_roles
+apply_migrations
+
+# --- code ---------------------------------------------------------------------
+say "rsync to $HOST:$REMOTE_DIR"
+changes=$(sync_repo "$HOST:$REMOTE_DIR")
+if [ -n "$changes" ]; then printf '%s\n' "$changes" | sed 's/^/    /'; else info "no changes"; fi
+if grep -Eq '^[<>]f.* deploy/airflow/(Dockerfile|requirements\.txt)$' <<< "$changes"; then
+    info "NOTE: the Airflow image inputs changed; they take effect only with --restart-airflow"
+fi
+[ "$DRY_RUN" = 1 ] && info "(dry run: the checks below see the server's current compose files)"
+
+# --- containers ---------------------------------------------------------------
+say "Postgres and Airflow (never touched without --restart-*)"
+drift_out=$(drift postgres "${AIRFLOW_SERVICES[@]}")
+printf '%s\n' "$drift_out"
+if grep -q 'DRIFT' <<< "$drift_out"; then
+    info "a plain 'docker compose up -d' would recreate the DRIFT services above;"
+    info "with the owner's OK: sh/deploy-data --restart-airflow (and/or --restart-postgres)"
+fi
+
+if [ "$RESTART_POSTGRES" = 1 ]; then
+    say "Recreating postgres if changed (--restart-postgres)"
+    if [ "$DRY_RUN" = 1 ]; then info "would run: docker compose up -d --no-deps postgres"
+    else remote "docker compose up -d --no-deps postgres"; fi
+fi
+if [ "$RESTART_AIRFLOW" = 1 ]; then
+    say "Rebuilding and recreating Airflow (--restart-airflow)"
+    if [ "$DRY_RUN" = 1 ]; then
+        info "would run: docker compose build airflow-scheduler"
+        info "would run: docker compose run --rm --no-deps airflow-init"
+        info "would run: docker compose up -d --no-deps ${AIRFLOW_SERVICES[*]}"
+    else
+        remote "docker compose build airflow-scheduler"
+        remote "docker compose run --rm --no-deps airflow-init </dev/null"
+        remote "docker compose up -d --no-deps ${AIRFLOW_SERVICES[*]}"
+    fi
+fi
+
+say "Caddy"
+caddy_out=$(drift caddy)
+printf '%s\n' "$caddy_out"
+if grep -q DRIFT <<< "$caddy_out"; then
+    if [ "$DRY_RUN" = 1 ]; then info "would run: docker compose up -d --no-deps caddy"
+    else remote "docker compose up -d --no-deps caddy"; fi
+elif [ "$DRY_RUN" != 1 ] && caddyfile_stale Caddyfile.databox; then
+    remote "docker compose restart caddy"
+elif [ "$DRY_RUN" = 1 ]; then
+    info "would restart caddy if caddy/Caddyfile.databox changed"
+else
+    info "config unchanged"
+fi
+
+say "Status"
+remote "docker compose ps --format 'table {{.Service}}\t{{.Status}}'"
+[ "$DRY_RUN" = 1 ] && say "DRY RUN complete: nothing was changed"
+exit 0

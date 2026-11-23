@@ -1,0 +1,112 @@
+#!/bin/bash
+# Usage: sh/deploy-apps [options] [user@host]     (default administrator@108.181.191.55)
+#
+# Deploys to the apps box (birddog-web, Mathesar, JupyterHub, ToolJet,
+# Saltcorn, apps-postgres, Caddy; deploy/two-box.md). Everything on this box
+# may be recreated, so it runs a plain `docker compose up -d`:
+#   1. checks the box: the repo is there and deploy/.env selects the apps-box
+#      override (refuses to run against the data box)
+#   2. adds missing deploy/.env keys; keys that must match the data box
+#      (role passwords, the Airflow API user) are only checked, never generated
+#   3. rsyncs the repo
+#   4. builds birddog-web, jupyterhub and the jupyter-singleuser notebook image
+#   5. docker compose up -d (recreates what changed), then restarts Caddy if
+#      its Caddyfile changed
+#
+# Migrations belong to the data box: run sh/deploy-data first when the new
+# code needs a schema change.
+set -euo pipefail
+# shellcheck source=lib/deploy-common.sh
+. "$(dirname "$0")/lib/deploy-common.sh"
+
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=1 ;;
+        -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; usage_common; exit 0 ;;
+        -*) die "unknown option $arg (see --help)" ;;
+        *) [ -z "$HOST" ] || die "one host only"; HOST=$arg ;;
+    esac
+done
+HOST="${HOST:-administrator@108.181.191.55}"
+OVERRIDE=docker-compose.appsbox.yml
+APP_SERVICES=(apps-postgres birddog-web mathesar jupyterhub tooljet saltcorn caddy)
+
+# Generated here when missing: secrets only this box uses. "require": the
+# value has to equal the data box's (the role passwords are set there, and
+# the Airflow API user lives there). "blank": data-box keys that compose
+# interpolates but nothing on this box uses (keeps compose from warning).
+ENV_SPEC="COMPOSE_FILE literal:docker-compose.yml:$OVERRIDE
+PUBLIC_DOMAIN literal:108-181-191-55.sslip.io
+APPS_POSTGRES_PASSWORD hex24
+MATHESAR_DB_PASSWORD hex24
+MATHESAR_SECRET_KEY hex32
+MATHESAR_ADMIN_USER literal:admin
+MATHESAR_ADMIN_PASSWORD hex12
+JUPYTERHUB_ADMIN_USER literal:admin
+JUPYTERHUB_ADMIN_PASSWORD hex12
+TOOLJET_DB_PASSWORD hex24
+TOOLJET_LOCKBOX_MASTER_KEY hex32
+TOOLJET_SECRET_KEY_BASE hex64
+SALTCORN_DB_PASSWORD hex24
+SALTCORN_SESSION_SECRET hex32
+BIRDDOG_SECRET_KEY hex32
+BIRDDOG_UI_DB_PASSWORD require
+JUPYTER_DB_PASSWORD require
+BIRDDOG_WEB_DB_PASSWORD require
+AIRFLOW_API_USER require
+AIRFLOW_API_PASSWORD require
+POSTGRES_PASSWORD blank
+AIRFLOW_DB_PASSWORD blank
+BIRDDOG_DB_PASSWORD blank
+FERNET_KEY blank
+JWT_SECRET blank
+AIRFLOW_ADMIN_USER blank
+AIRFLOW_ADMIN_PASSWORD blank"
+
+check_local_repo
+ssh_setup
+[ "$DRY_RUN" = 1 ] && say "DRY RUN: nothing on $HOST will change"
+
+say "Checking $HOST"
+check_remote_box "$OVERRIDE"
+info "ok: $REMOTE_DIR/deploy, $OVERRIDE"
+
+say "deploy/.env"
+if ! ensure_env "$ENV_SPEC"; then
+    [ "$DRY_RUN" = 1 ] || die "deploy/.env is missing keys that must come from the data box"
+fi
+
+say "rsync to $HOST:$REMOTE_DIR"
+changes=$(sync_repo "$HOST:$REMOTE_DIR")
+if [ -n "$changes" ]; then printf '%s\n' "$changes" | sed 's/^/    /'; else info "no changes"; fi
+
+say "Containers before the deploy"
+drift "${APP_SERVICES[@]}"
+
+if [ "$DRY_RUN" = 1 ]; then
+    say "Would run"
+    info "docker compose build birddog-web jupyterhub"
+    info "docker compose --profile build-only build jupyter-singleuser"
+    info "docker compose up -d   (recreates the DRIFT services above, and any whose image the build changes)"
+    info "docker compose restart caddy   (only if caddy/Caddyfile.appsbox changed)"
+    say "DRY RUN complete: nothing was changed"
+    exit 0
+fi
+
+say "Build"
+remote "docker compose build birddog-web jupyterhub"
+# the per-user notebook image JupyterHub spawns (build-only profile, never up)
+remote "docker compose --profile build-only build jupyter-singleuser"
+
+say "docker compose up -d"
+remote "docker compose up -d"
+
+say "Caddy"
+if caddyfile_stale Caddyfile.appsbox; then
+    remote "docker compose restart caddy"
+else
+    info "config unchanged"
+fi
+
+say "Status"
+remote "docker compose ps --format 'table {{.Service}}\t{{.Status}}'"
