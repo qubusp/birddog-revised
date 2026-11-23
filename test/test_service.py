@@ -100,12 +100,12 @@ class TestUsersManager(unittest.TestCase):
 
     def test_users_lookup_cache_miss_returns_none(self):
         mgr = service.Users(path="users")
-        with patch("birddog.service.load_cached_object", side_effect=service.CacheMissError("miss")):
+        with patch("birddog.service.load_user_record", return_value=None):
             self.assertIsNone(mgr.lookup(TEST_EMAIL))
 
     def test_users_lookup_success(self):
         mgr = service.Users(path="users")
-        with patch("birddog.service.load_cached_object", return_value={"x": 1}) as lc,              patch("birddog.service.User") as User:
+        with patch("birddog.service.load_user_record", return_value={"x": 1}) as lc,              patch("birddog.service.User") as User:
             User.from_dict.return_value = _UserStub()
             u = mgr.lookup(TEST_EMAIL)
             self.assertIsNotNone(u)

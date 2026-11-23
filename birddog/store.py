@@ -10,15 +10,20 @@ from dataclasses import dataclass
 from typing import List, Tuple
 
 import sqlite3
-import boto3
-from boto3.dynamodb.conditions import Key
 
 from decimal import Decimal
 
-from birddog.env import detect_environment, env_table_name
+from birddog.env import store_backend, env_table_name, base_table_name
+from birddog import app_db
 from birddog.utility import json_size
 from birddog.log import get_logger, LogService
 _logger = get_logger()
+
+# boto3 is only needed by the DynamoDB classes (kept for the old AWS runtime
+# and birddog/dynamo_migrate.py), so it is imported on first use
+def Key(name):
+    from boto3.dynamodb.conditions import Key as _Key
+    return _Key(name)
 
 # string queue (abstract version) ---------------------------------------
 
@@ -274,6 +279,7 @@ class SQLiteStringQueue(AbstractStringQueue):
 
 class DynamoDBStringQueue(AbstractStringQueue):
     def __init__(self, table_name='birddog_string_queues'):
+        import boto3
         self._table_name = table_name
         self._dynamodb = boto3.resource('dynamodb')
         self._client = boto3.client('dynamodb')
@@ -583,12 +589,127 @@ class DynamoDBStringQueue(AbstractStringQueue):
 
         return items_out
 
+# string queue (postgres version) ---------------------------------------
+
+class PostgresStringQueue(AbstractStringQueue):
+    """app.string_queue; one "store" per former table. Claims use
+    FOR UPDATE SKIP LOCKED, so concurrent claimers never get the same item."""
+
+    def __init__(self, table_name="queue", db_path=None):
+        # db_path: accepted for SQLiteStringQueue call compatibility, unused
+        self._store = base_table_name(table_name)
+
+    def append(self, queue_name: str, strings: list[str]):
+        if not strings:
+            return
+        if any(s == "" for s in strings):
+            raise ValueError("empty string cannot be appended to a queue")
+        from psycopg2.extras import execute_values
+        with LogService("StringQueue", "append", path=queue_name, size=json_size(strings)):
+            with app_db.cursor() as cur:
+                execute_values(
+                    cur,
+                    "INSERT INTO app.string_queue (store, queue_name, value) VALUES %s",
+                    [(self._store, queue_name, s) for s in strings])
+
+    def peek(self, queue_name: str, n: int) -> list[str]:
+        if n <= 0:
+            return []
+        with LogService("StringQueue", "peek", path=queue_name) as log:
+            with app_db.cursor() as cur:
+                cur.execute(
+                    "SELECT value FROM app.string_queue "
+                    "WHERE store = %s AND queue_name = %s AND (lease_until_ms IS NULL OR lease_until_ms <= %s) "
+                    "ORDER BY id LIMIT %s",
+                    (self._store, queue_name, _now_ms(), n))
+                payload = [r[0] for r in cur.fetchall()]
+            log.size = json_size(payload)
+        return payload
+
+    def length(self, queue_name: str) -> int:
+        with LogService("StringQueue", "length", path=queue_name):
+            with app_db.cursor() as cur:
+                cur.execute("SELECT count(*) FROM app.string_queue WHERE store = %s AND queue_name = %s",
+                            (self._store, queue_name))
+                return int(cur.fetchone()[0])
+
+    def claim(self, queue_name: str, n: int, lease_ms: int, consumer_id: str) -> List[ClaimedItem]:
+        if n <= 0:
+            return []
+        now = _now_ms()
+        with LogService("StringQueue", "claim", path=queue_name) as log:
+            with app_db.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE app.string_queue q
+                    SET lease_until_ms = %s, lease_owner = %s, claimed_at_ms = %s
+                    FROM (
+                        SELECT id FROM app.string_queue
+                        WHERE store = %s AND queue_name = %s
+                          AND (lease_until_ms IS NULL OR lease_until_ms <= %s)
+                        ORDER BY id
+                        LIMIT %s
+                        FOR UPDATE SKIP LOCKED
+                    ) picked
+                    WHERE q.id = picked.id
+                    RETURNING q.id, q.value
+                    """,
+                    (now + int(lease_ms), consumer_id, now, self._store, queue_name, now, n))
+                rows = sorted(cur.fetchall())
+            log.size = json_size({"requested": n, "claimed": len(rows)})
+        return [ClaimedItem(receipt=str(r[0]), value=r[1]) for r in rows]
+
+    def ack(self, queue_name: str, receipts: list[str], consumer_id: str):
+        if not receipts:
+            return
+        ids = [int(r) for r in receipts]
+        with LogService("StringQueue", "ack", path=queue_name, size=len(receipts)):
+            with app_db.cursor() as cur:
+                # only items this consumer still holds; a lost lease stays queued
+                cur.execute(
+                    "DELETE FROM app.string_queue "
+                    "WHERE store = %s AND queue_name = %s AND lease_owner = %s AND id = ANY(%s)",
+                    (self._store, queue_name, consumer_id, ids))
+                if cur.rowcount != len(ids):
+                    _logger.warning("ack: expected %d deletes, got %d (queue=%s owner=%s)",
+                                    len(ids), cur.rowcount, queue_name, consumer_id)
+
+    def extend(self, queue_name: str, receipts: list[str], lease_ms: int, consumer_id: str):
+        if not receipts:
+            return
+        ids = [int(r) for r in receipts]
+        with LogService("StringQueue", "extend", path=queue_name, size=len(receipts)):
+            with app_db.cursor() as cur:
+                cur.execute(
+                    "UPDATE app.string_queue SET lease_until_ms = %s "
+                    "WHERE store = %s AND queue_name = %s AND lease_owner = %s AND id = ANY(%s)",
+                    (_now_ms() + int(lease_ms), self._store, queue_name, consumer_id, ids))
+
+    def dump(self, queue_name: str) -> list[dict]:
+        with LogService("StringQueue", "dump_queue", path=queue_name) as log:
+            with app_db.cursor() as cur:
+                cur.execute(
+                    "SELECT id, queue_name, value, lease_until_ms, lease_owner, claimed_at_ms "
+                    "FROM app.string_queue WHERE store = %s AND queue_name = %s ORDER BY id",
+                    (self._store, queue_name))
+                rows = cur.fetchall()
+            out = [{
+                "id": id_, "queue_name": qname, "value": value,
+                "value_type": type(value).__name__,
+                "value_len": len(value) if isinstance(value, str) else None,
+                "lease_until_ms": lease_until_ms, "lease_owner": lease_owner,
+                "claimed_at_ms": claimed_at_ms,
+            } for id_, qname, value, lease_until_ms, lease_owner, claimed_at_ms in rows]
+            log.size = json_size({"returned": len(out)})
+        return out
+
 # platform-independent access to string queue ----------------------------------
 
-if detect_environment() == "aws":
-    StringQueue = DynamoDBStringQueue
-else:
-    StringQueue = SQLiteStringQueue
+StringQueue = {
+    "postgres": PostgresStringQueue,
+    "dynamodb": DynamoDBStringQueue,
+    "sqlite": SQLiteStringQueue,
+}[store_backend()]
 
 # key value store (abstract version) ---------------------------------------
 
@@ -806,6 +927,7 @@ class DynamoDBKeyValueStore:
         # base like the task/tracker tables -- see env.env_table_name
         if table_name is None:
             table_name = env_table_name('birddog_key_value_store')
+        import boto3
         self._table_name = table_name
         self._dynamodb = boto3.resource('dynamodb')
         self._client = boto3.client('dynamodb')
@@ -1025,9 +1147,129 @@ class DynamoDBKeyValueStore:
                 for key in keys
             ])
 
+# key value store (postgres version) ---------------------------------------
+
+_PG_DEFAULT_KV_STORE = "birddog_key_value_store"
+
+class PostgresKeyValueStore(AbstractKeyValueStore):
+    """app.kv; table_name becomes the "store" column, so each former
+    DynamoDB table / SQLite file keeps its own key space. The per-base table
+    suffix (_STAGE) is dropped: each base has its own database here."""
+
+    def __init__(self, table_name=None, db_path=None):
+        # db_path: accepted for SQLiteKeyValueStore call compatibility, unused
+        self._store = base_table_name(table_name or _PG_DEFAULT_KV_STORE)
+
+    @property
+    def store(self):
+        return self._store
+
+    def insert(self, namespace: str, key: str, value: str):
+        if not isinstance(value, str):
+            raise TypeError("value must be str")
+        if not isinstance(key, str):
+            raise TypeError("key must be str")
+        with LogService("KVStore", "insert", path=namespace, size=len(key) + len(value)):
+            with app_db.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO app.kv (store, namespace, key, value) VALUES (%s, %s, %s, %s) "
+                    "ON CONFLICT (store, namespace, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()",
+                    (self._store, namespace, key, value))
+
+    def update_if_exists(self, namespace: str, key: str, value: str):
+        if not isinstance(value, str):
+            raise TypeError("value must be str")
+        with LogService("KVStore", "update_if_exists", path=namespace, size=len(key) + len(value)):
+            with app_db.cursor() as cur:
+                cur.execute(
+                    "UPDATE app.kv SET value = %s, updated_at = now() "
+                    "WHERE store = %s AND namespace = %s AND key = %s",
+                    (value, self._store, namespace, key))
+
+    def remove(self, namespace: str, key: str):
+        with LogService("KVStore", "remove", path=namespace, size=len(key)):
+            with app_db.cursor() as cur:
+                cur.execute("DELETE FROM app.kv WHERE store = %s AND namespace = %s AND key = %s",
+                            (self._store, namespace, key))
+
+    def remove_if_exists(self, namespace: str, key: str) -> bool:
+        with LogService("KVStore", "remove_if_exists", path=namespace, size=len(key)):
+            with app_db.cursor() as cur:
+                cur.execute("DELETE FROM app.kv WHERE store = %s AND namespace = %s AND key = %s",
+                            (self._store, namespace, key))
+                return cur.rowcount > 0
+
+    def remove_all(self, namespace: str):
+        with LogService("KVStore", "remove_all", path=namespace):
+            with app_db.cursor() as cur:
+                cur.execute("DELETE FROM app.kv WHERE store = %s AND namespace = %s",
+                            (self._store, namespace))
+
+    def get(self, namespace: str, key: str) -> str:
+        with LogService("KVStore", "get", path=namespace) as log:
+            with app_db.cursor() as cur:
+                cur.execute("SELECT value FROM app.kv WHERE store = %s AND namespace = %s AND key = %s",
+                            (self._store, namespace, key))
+                row = cur.fetchone()
+            if row is None:
+                raise KeyError(f"{namespace}:{key} not found")
+            log.size = json_size(row)
+        return row[0]
+
+    def get_all(self, namespace: str) -> List[Tuple[str, str]]:
+        with LogService("KVStore", "get_all", path=namespace) as log:
+            with app_db.cursor() as cur:
+                # COLLATE "C": byte order, like SQLite and DynamoDB sort keys
+                cur.execute('SELECT key, value FROM app.kv WHERE store = %s AND namespace = %s ORDER BY key COLLATE "C"',
+                            (self._store, namespace))
+                payload = cur.fetchall()
+            log.size = json_size(payload)
+        return list(payload)
+
+    def count(self, namespace: str) -> int:
+        with LogService("KVStore", "count", path=namespace):
+            with app_db.cursor() as cur:
+                cur.execute("SELECT count(*) FROM app.kv WHERE store = %s AND namespace = %s",
+                            (self._store, namespace))
+                return int(cur.fetchone()[0])
+
+    def insert_many(self, namespace: str, items: dict):
+        if not items:
+            return
+        from psycopg2.extras import execute_values
+        size = sum(len(k) + len(v) for k, v in items.items())
+        with LogService("KVStore", "insert_many", path=namespace, size=size):
+            with app_db.cursor() as cur:
+                execute_values(
+                    cur,
+                    "INSERT INTO app.kv (store, namespace, key, value) VALUES %s "
+                    "ON CONFLICT (store, namespace, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()",
+                    [(self._store, namespace, k, v) for k, v in items.items()],
+                    page_size=1000)
+
+    def get_many(self, namespace: str, keys: list) -> dict:
+        if not keys:
+            return {}
+        with LogService("KVStore", "get_many", path=namespace) as log:
+            with app_db.cursor() as cur:
+                cur.execute("SELECT key, value FROM app.kv WHERE store = %s AND namespace = %s AND key = ANY(%s)",
+                            (self._store, namespace, list(keys)))
+                rows = cur.fetchall()
+            log.size = json_size(rows)
+        return dict(rows)
+
+    def remove_many(self, namespace: str, keys: list):
+        if not keys:
+            return
+        with LogService("KVStore", "remove_many", path=namespace, size=len(keys)):
+            with app_db.cursor() as cur:
+                cur.execute("DELETE FROM app.kv WHERE store = %s AND namespace = %s AND key = ANY(%s)",
+                            (self._store, namespace, list(keys)))
+
 # platform-independent access to key value store ----------------------------------
 
-if detect_environment() == "aws":
-    KeyValueStore = DynamoDBKeyValueStore
-else:
-    KeyValueStore = SQLiteKeyValueStore
+KeyValueStore = {
+    "postgres": PostgresKeyValueStore,
+    "dynamodb": DynamoDBKeyValueStore,
+    "sqlite": SQLiteKeyValueStore,
+}[store_backend()]

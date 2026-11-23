@@ -39,7 +39,7 @@ from birddog.wiki import (
     title_lineage_labels,
     page_label,
     )
-from birddog.user import User
+from birddog.user import User, load_user_record
 from birddog.utility import get_text, system_resource_report
 from birddog.log import (
     get_logger,
@@ -85,10 +85,11 @@ def _hide(email: str, salt: str = app.secret_key) -> str:
 
 class Users:
     """
-    User manager backed by S3 (via load_cached_object/save_cached_object).
+    User manager backed by the account store: Postgres app.user_account on the
+    new stack, else the object cache (S3/local) -- see user.load_user_record.
 
     - No Flask session dependency.
-    - No in-memory user cache (every lookup hits S3).
+    - No in-memory user cache (every lookup hits the store).
     - Per-email locks only for write/create races.
     """
 
@@ -103,9 +104,8 @@ class Users:
         """
         Return a User instance for the given email, or None if not found.
         """
-        try:
-            data = load_cached_object(self._user_path(email))
-        except (CacheMissError, KeyError):
+        data = load_user_record(email, path=self._path)
+        if data is None:
             return None
         return User.from_dict(email, data, runtime=runtime)
 
