@@ -17,10 +17,8 @@ document link lists are checked against NocoDB's own count rollups."""
 
 import json
 import logging
-import math
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from psycopg2.extras import execute_values
@@ -31,7 +29,10 @@ _logger = logging.getLogger(__name__)
 
 _DEFAULT_BASE = "phb0w28bqvl85ki"   # CLOUD_STAGE in resources/db_config.json
 _PAGE_SIZE = 100                    # the v3 API's maximum
-_WORKERS = 2                        # NocoDB Cloud rate-limits bursts (429)
+# NocoDB Cloud answers bursts with 429 + Retry-After (~30 s). Requests go out
+# one at a time at a steady pace, and each 429 slows the pace down for good.
+_MIN_INTERVAL = 1.0                 # seconds between requests, to start with
+_MAX_INTERVAL = 10.0
 
 TABLES = {
     "pages": "Pages",
@@ -47,12 +48,34 @@ def _config():
             os.environ["NOCODB_IMPORT_TOKEN"])
 
 
-def _get(session, url, params=None):
+class _Pacer:
+    """Spaces requests at least `interval` seconds apart; slow_down() is
+    called on a 429 and makes the spacing permanently longer."""
+
+    def __init__(self, interval=_MIN_INTERVAL):
+        self.interval = interval
+        self._last = 0.0
+
+    def wait(self):
+        delay = self._last + self.interval - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
+        self._last = time.monotonic()
+
+    def slow_down(self):
+        self.interval = min(self.interval * 1.5, _MAX_INTERVAL)
+
+
+def _get(session, url, params=None, pacer=None):
     # NocoDB Cloud's rate limit can hold for minutes: honour Retry-After and
     # keep backing off (up to ~15 minutes in total) instead of failing the task
     for attempt in range(20):
+        if pacer:
+            pacer.wait()
         resp = session.get(url, params=params, timeout=120)
         if resp.status_code == 429 or resp.status_code >= 500:
+            if pacer and resp.status_code == 429:
+                pacer.slow_down()
             retry_after = resp.headers.get("Retry-After", "")
             wait = int(retry_after) if retry_after.isdigit() else min(2 ** attempt, 60)
             _logger.info(f"nocodb_import: {resp.status_code}, retrying in {wait}s")
@@ -68,34 +91,50 @@ def _table_ids(session, host, base):
     return {t["title"]: t["id"] for t in tables}
 
 
-def land(table_key):
-    """Pulls one NocoDB table into raw.nocodb_record. Returns the record count."""
+def land(table_key, full=False):
+    """Pulls one NocoDB table into raw.nocodb_record, paging by record id
+    (Id > last landed id) so each request is cheap and an interrupted run
+    resumes where it stopped. full=True starts from the first record again.
+    Returns the expected and landed counts."""
     host, base, token = _config()
     session = requests.Session()
     session.headers["xc-token"] = token
+    pacer = _Pacer()
     table_id = _table_ids(session, host, base)[TABLES[table_key]]
-    total = _get(session, f"{host}/api/v2/tables/{table_id}/records/count")["count"]
-    pages = math.ceil(total / _PAGE_SIZE)
+    total = _get(session, f"{host}/api/v2/tables/{table_id}/records/count", pacer=pacer)["count"]
     url = f"{host}/api/v3/data/{base}/{table_id}/records"
-    _logger.info(f"nocodb_import: {table_key}: {total} records, {pages} pages")
 
-    def fetch(page):
-        data = _get(session, url, {"page": page, "pageSize": _PAGE_SIZE})
-        return [(table_key, r["id"], json.dumps(r["fields"], ensure_ascii=False))
-                for r in data.get("records", [])]
+    with pg.connect() as conn, conn.cursor() as cur:
+        cur.execute("SELECT max(nocodb_id) FROM raw.nocodb_record WHERE table_name = %s",
+                    (table_key,))
+        last_id = 0 if full else (cur.fetchone()[0] or 0)
+    _logger.info(f"nocodb_import: {table_key}: {total} records, starting after id {last_id}")
 
-    landed = 0
-    with ThreadPoolExecutor(max_workers=_WORKERS) as pool:
-        for start in range(1, pages + 1, 50):
-            rows = [row for batch in pool.map(fetch, range(start, min(start + 50, pages + 1)))
-                    for row in batch]
-            with pg.connect() as conn, conn.cursor() as cur:
-                execute_values(cur, """
-                    INSERT INTO raw.nocodb_record (table_name, nocodb_id, fields) VALUES %s
-                    ON CONFLICT (table_name, nocodb_id)
-                    DO UPDATE SET fields = EXCLUDED.fields, landed_at = now()""", rows)
-            landed += len(rows)
-            _logger.info(f"nocodb_import: {table_key}: {landed}/{total}")
+    while True:
+        data = _get(session, url, {"where": f"(Id,gt,{last_id})", "pageSize": _PAGE_SIZE},
+                    pacer=pacer)
+        records = data.get("records", [])
+        if not records:
+            break
+        rows = [(table_key, r["id"], json.dumps(r["fields"], ensure_ascii=False))
+                for r in records]
+        with pg.connect() as conn, conn.cursor() as cur:
+            execute_values(cur, """
+                INSERT INTO raw.nocodb_record (table_name, nocodb_id, fields) VALUES %s
+                ON CONFLICT (table_name, nocodb_id)
+                DO UPDATE SET fields = EXCLUDED.fields, landed_at = now()""", rows)
+        new_last = max(r["id"] for r in records)
+        if new_last <= last_id:
+            raise RuntimeError(f"nocodb_import: {table_key}: paging stalled at id {last_id}")
+        last_id = new_last
+        if len(records) < _PAGE_SIZE:
+            break
+
+    with pg.connect() as conn, conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM raw.nocodb_record WHERE table_name = %s", (table_key,))
+        landed = cur.fetchone()[0]
+    _logger.info(f"nocodb_import: {table_key}: {landed}/{total} landed "
+                 f"(request interval {pacer.interval:.1f}s)")
     return {"table": table_key, "expected": total, "landed": landed}
 
 
