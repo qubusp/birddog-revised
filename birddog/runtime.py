@@ -35,8 +35,18 @@ from birddog.utility import HeartbeatManager
 from birddog.fetch import FetchUrlFailError
 from birddog import significance
 
-#_ENABLE_DB_SYNC = os.environ.get("BIRDDOG_ENABLE_DB_SYNC", False)
-_ENABLE_DB_SYNC = True
+from birddog import pg
+
+# Legacy NocoDB sync: the in-process DatabaseUpdater, doc trackers, FTP and
+# location managers and housekeeping, all writing to NocoDB. With Postgres
+# configured (BIRDDOG_DATABASE_URL) that work belongs to the Airflow pipeline
+# and the app only reads core.* (birddog/catalog.py), so none of it runs and
+# NocoDB is never imported. Without Postgres it runs only when a NocoDB base
+# is configured (BIRDDOG_NOCODB_ENV), so the app starts without either.
+def _legacy_sync_enabled():
+    return (not pg.enabled()) and bool(os.environ.get("BIRDDOG_NOCODB_ENV"))
+
+_ENABLE_DB_SYNC = _legacy_sync_enabled()
 # automatic (wiki-change driven) database updates: the page tracker pushing
 # edited titles and the doc trackers pushing edited files. False leaves manual
 # updates (the /database_update endpoint) working while _ENABLE_DB_SYNC is on.
@@ -48,11 +58,6 @@ _ENABLE_DOC_TRACKER = True
 _ENABLE_FTP_MANAGER = True
 _ENABLE_SIGNIFICANCE_SWEEP = True
 _ENABLE_LOCATION_UPDATES = True
-if _ENABLE_DB_SYNC:
-    from birddog.database_updater import DatabaseUpdater, DatabaseUpdateManager
-    from birddog.database import Database
-    from birddog.ftp import FTPSiteManager
-    from birddog.locations.manager import LocationUpdateManager
 
 from birddog.log import get_logger, ServiceLogger, EventLogger
 _logger = get_logger()
@@ -325,18 +330,50 @@ class KillSwitch(HeartbeatManager):
 
 
 # ----------------------------------------------------------------------------
+# Background jobs (Postgres mode)
+#
+# With Postgres the database work the routes start (refreshing pages from the
+# wiki, translating a page) runs in Airflow, not in this process. Runtime
+# hands those requests to a BackgroundJobs object; this default has no
+# backend and reports itself unavailable. The Airflow side supplies a
+# subclass (Runtime(jobs=...)) that triggers the DAGs.
+
+class BackgroundJobs:
+    available = False
+
+    def request_page_refresh(self, titles, deep=False, update_locations=False):
+        """Queue titles (a title or a list) for a refresh from the wiki."""
+        raise NotImplementedError("no background job backend configured")
+
+    def request_translation(self, title):
+        """Queue the untranslated text of one page for translation."""
+        raise NotImplementedError("no background job backend configured")
+
+    def status(self):
+        """Running jobs, as {task_name: {...}} (the /database_update 'tasks')."""
+        return {}
+
+    def cancel(self, task_name):
+        raise KeyError(task_name)
+
+# ----------------------------------------------------------------------------
 # Birddog Runtime
 
 class Runtime:
     _LRU_SIZE                = 500
     _LOG_CUTOFF_DAYS         = 15 # days
 
-    def __init__(self):
+    def __init__(self, jobs=None):
         self._page_lru = PageLRU(maxsize=Runtime._LRU_SIZE)
         self._update_manager = PageUpdateManager(self)
         self._translation_manager = TranslationManager(self)
         self._export_manager = ExportManager(self)
+        self._jobs = jobs if jobs is not None else BackgroundJobs()
         if _ENABLE_DB_SYNC:
+            from birddog.database_updater import DatabaseUpdater, DatabaseUpdateManager
+            from birddog.database import Database
+            from birddog.ftp import FTPSiteManager
+            from birddog.locations.manager import LocationUpdateManager
             self._database = Database()
             self._database_updater = DatabaseUpdater(
                 self,
@@ -419,7 +456,9 @@ class Runtime:
                 self._database_update_manager.start()
             if self._location_update_manager:
                 self._location_update_manager.start()
-            if self.translation_enabled:
+            if self._translation_manager.enabled and not self.reads_from_database:
+                # live page translation into the page cache; with Postgres
+                # the pipeline translates (core.page.description_en)
                 self._translation_manager.start()
             if self._commons_doc_tracker:
                 self._commons_doc_tracker.start()
@@ -479,7 +518,33 @@ class Runtime:
             self._state = "running"
 
     def lookup_by_title(self, title):
+        """Live wiki page (core.Page, cached). The browse view reads Postgres
+        instead (birddog/catalog.py); this stays for comparisons with older
+        revisions, exports and the watchlist checks."""
         return self._page_lru.lookup_by_title(title, runtime=self)
+
+    @property
+    def reads_from_database(self):
+        """True when page/archive data is read from Postgres (catalog.py)."""
+        return pg.enabled()
+
+    @property
+    def jobs(self):
+        return self._jobs
+
+    def request_translation(self, title):
+        """Translate one page's text: through the job backend with Postgres,
+        else the in-process translation manager. Returns True if started."""
+        if self.reads_from_database:
+            if not self._jobs.available:
+                return False
+            self._jobs.request_translation(title)
+            return True
+        page = self.lookup_by_title(title)
+        if page and self.translation_enabled:
+            self.start_translation(page)
+            return True
+        return False
 
     def start_translation(self, page=None, task_name=None, items=None):
         if self.translation_enabled:
@@ -507,7 +572,7 @@ class Runtime:
             page = self.lookup_by_title(task_name)
             page.apply_translation(translation_map)
         elif task_name.startswith("DBT_"):
-            if not self.database_update_enabled:
+            if not _ENABLE_DB_SYNC:
                 _logger.error("Runtime: unable to complete translation task: database unavailable")
             else:
                 self._database_update_manager.complete_translation(task_name, translation_map)
@@ -520,14 +585,20 @@ class Runtime:
 
     @property
     def translation_available(self):
+        if self.reads_from_database:
+            return self._jobs.available
         return self._translation_manager.available
 
     @property
     def translation_enabled(self):
+        if self.reads_from_database:
+            return self._jobs.available
         return self._translation_manager.enabled
 
     @property
     def database_update_enabled(self):
+        if self.reads_from_database:
+            return self._jobs.available
         return _ENABLE_DB_SYNC
 
     @property
@@ -535,15 +606,20 @@ class Runtime:
         return _ENABLE_DB_SYNC and _ENABLE_DB_AUTO_UPDATE
 
     def update_to_database(self, titles, deep=False, update_locations=False):
-        if self.database_update_enabled:
+        if self.reads_from_database:
+            if self._jobs.available:
+                self._jobs.request_page_refresh(titles, deep=deep, update_locations=update_locations)
+        elif self.database_update_enabled:
             self._database_update_manager.start_update(titles, deep, update_locations=update_locations)
 
     def update_documents_to_database(self, doc_urls, update_locations=False):
-        if self.database_update_enabled:
+        if _ENABLE_DB_SYNC:
             self._database_update_manager.start_document_update(doc_urls, update_locations=update_locations)
 
     @property
     def active_database_updates(self):
+        if self.reads_from_database:
+            return self._jobs.status() if self._jobs.available else None
         if self.database_update_enabled:
             # location update tasks are listed alongside the database updates
             # that start them; task names are unique across both (DBU_/DBD_/LOC_)
@@ -554,14 +630,16 @@ class Runtime:
         return None
 
     def cancel_update(self, task_name):
-        if self.database_update_enabled:
+        if self.reads_from_database:
+            self._jobs.cancel(task_name)
+        elif self.database_update_enabled:
             if self._location_update_manager and task_name in self._location_update_manager.status():
                 self._location_update_manager.cancel(task_name)
             else:
                 self._database_update_manager.cancel(task_name)
 
     def run_database_housekeeping(self):
-        if self.database_update_enabled and _ENABLE_DB_HOUSEKEEPING:
+        if _ENABLE_DB_SYNC and _ENABLE_DB_HOUSEKEEPING:
             self._database_updater.start_translation()
             self._database_update_manager.update_document_metadata()
             self._database_updater.refresh_doc_lookups()

@@ -27,6 +27,8 @@ from flask import (
 
 # Birddog packages
 from birddog.runtime import Runtime
+from birddog import catalog
+from birddog.core import page_history
 from birddog.excel import list_templates, list_column_classes, default_column_header_map
 from birddog.cache import (
     load_cached_object,
@@ -389,7 +391,13 @@ def archive_list(user):
     # computed fresh each request (not cached at startup) since the
     # dynamic archive-root registry grows over time as new archives are
     # discovered by the tracker
-    return jsonify(all_archive_roots())
+    return jsonify(_archive_roots())
+
+def _archive_roots():
+    if catalog.enabled():
+        catalog.refresh_archive_root_labels()
+        return catalog.archive_roots()
+    return all_archive_roots()
 
 # Update label/description for existing archives
 @app.route("/archives", methods=['POST'])
@@ -401,6 +409,9 @@ def update_archives(user):
     data = request.json
     items = data if isinstance(data, list) else [data]
 
+    if catalog.enabled():
+        # roots registered by the pipeline since the labels were last loaded
+        catalog.refresh_archive_root_labels(force=True)
     unknown = [item.get('title') for item in items if not archive_root_label(item.get('title'))]
     if unknown:
         return jsonify({'error': f'Unknown archive title(s): {unknown}'}), 400
@@ -408,21 +419,63 @@ def update_archives(user):
     for item in items:
         update_archive_root(item['title'], label=item.get('label'), description=item.get('description'))
 
-    return jsonify(all_archive_roots())
+    return jsonify(_archive_roots())
+
+def _page_history(title):
+    """Revision history from the wiki (the database keeps only the latest
+    revision); [] when the wiki can't be reached."""
+    try:
+        return page_history(title, cutoff_date='2000')
+    except Exception as err:
+        _logger.warning(f'/page: history unavailable for {title}: {err}')
+        return []
+
+def _database_page(page_title):
+    """Browse-view JSON from Postgres, or None to use the live wiki page:
+    when the database isn't configured, doesn't have the page yet, or the
+    wiki has a revision newer than the one the database holds."""
+    if not catalog.enabled():
+        return None
+    try:
+        catalog.refresh_archive_root_labels()
+        page_dict = catalog.page_payload(page_title)
+    except Exception:
+        _logger.exception(f'/page: database read failed for {page_title!r}; using the wiki')
+        return None
+    if page_dict is None:
+        return None
+    history = _page_history(page_dict['title'])
+    newest = max((h['modified'] for h in history), default='')
+    # minute precision: some imported timestamps lost their seconds
+    if newest and newest[:16] > page_dict['lastmod'][:16]:
+        _logger.info(f'/page: database behind the wiki for {page_title!r} '
+                     f'({page_dict["lastmod"] or "never fetched"} < {newest}); using the wiki')
+        return None
+    page_dict['history'] = _compress_history(history)
+    return page_dict
 
 @app.route('/page', methods=['GET'])
 @login_required
 def page_data(user):
     page = None
     page_title = request.args.get('title')
-    if page_title:
-        #page_title = request.args.get('title')
-        _logger.info(f'/page looking up title: {page_title}')
-        page = runtime.lookup_by_title(page_title)
-    else:
+    if not page_title:
         return "Missing required parameter: 'title'", 400
+    ref_date = request.args.get('compare')
+    _logger.info(f'/page looking up title: {page_title}')
+
+    # current version: from the database. Comparisons with an older revision
+    # need the revisions themselves, which only the wiki has.
+    page_dict = None if ref_date else _database_page(page_title)
+    if page_dict is not None:
+        page_dict['lineage'] = title_lineage(page_dict['title'])
+        page_dict['lineage_labels'] = title_lineage_labels(page_dict['title'])
+        page_dict['no_earlier_version'] = False
+        user.set_preference("last_page", page_dict['title'])
+        return jsonify(page_dict), 200
+
+    page = runtime.lookup_by_title(page_title)
     if page:
-        ref_date = request.args.get('compare')
         no_earlier_version = False
         if ref_date:
             page = page.compare(ref_date)
@@ -443,6 +496,7 @@ def page_data(user):
         page_dict['needs_translation'] = page.needs_translation
         page_dict['history'] = _compress_history(page.history(cutoff_date='2000'))
         page_dict['no_earlier_version'] = no_earlier_version
+        page_dict['source'] = 'wiki'
 
         user.set_preference("last_page", page.title)
         return jsonify(page_dict), 200
@@ -456,6 +510,26 @@ def ascii_filename(name):
     new_name = re.sub(r'[^\w\-_.]', '_', new_name)
     _logger.info(f'normalizing filename: {name} -> {new_name}')
     return new_name or "download"
+
+# ---- SEARCH -------------------------------------------------
+
+@app.route('/search', methods=['GET'])
+@login_required
+def search(user):
+    """Keyword + fuzzy search over pages and documents (core.search()).
+    Each result's page_title is the wiki title to open with /page."""
+    query = (request.args.get('q') or '').strip()
+    if not query:
+        return jsonify({'error': "Missing required parameter: 'q'"}), 400
+    if not catalog.enabled():
+        return jsonify({'error': 'Search needs the database'}), 503
+    limit = request.args.get('limit', default=50, type=int)
+    try:
+        results = catalog.search(query, limit=limit)
+    except Exception:
+        _logger.exception(f'/search failed for {query!r}')
+        return jsonify({'error': 'Search failed'}), 500
+    return jsonify({'query': query, 'results': results}), 200
 
 # ---- EXPORT -------------------------------------------------
 
@@ -788,13 +862,10 @@ def _active_translations():
 @app.route('/translate', methods=['GET'])
 @login_required
 def translate(user):
-    page = None
     page_title = request.args.get('title')
     if page_title:
-        page = runtime.lookup_by_title(page_title)
-    if page:
         # start new translation
-        runtime.start_translation(page)
+        runtime.request_translation(page_title)
     return jsonify({
         'enabled': runtime.translation_enabled,
         'available': runtime.translation_available,
