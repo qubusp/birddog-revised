@@ -55,8 +55,48 @@ Settings > Plugins. It provides two ways in:
 
 The container already has `SC_EXTPG_PASS_birddog` set to the `birddog_ui`
 password, so you can leave the password field empty and Saltcorn never stores
-it. We haven't tested whether writes go through, so check that before relying
-on it.
+it. Writes go through (tested with the Curator app below).
+
+## Saltcorn Curator app
+
+A curator app built in Saltcorn, under the menu **Curator > Search**. All of
+it requires the staff role (role id 40) or admin; logged-out requests are
+redirected to the login page and the `/api/bd_*` endpoints answer 401.
+
+- **Search** (page `curator_search`): a search box that runs `core.search()`
+  and lists kind, title (linking to the page or document detail), snippet and
+  a link to the wiki. postgres-tables can only read and write tables and
+  views, so the form inserts the text into `saltcorn.search_request` and the
+  results list reads `saltcorn.search_hit` (`core.search(q, 50)` per distinct
+  text, filtered on `q`). Both come from migration
+  `deploy/db/migrations/009_saltcorn_curator.sql`; `search_request` doubles as
+  a search log.
+- **Page detail** (`/view/curator_page?id=`): `views._page_base` fields, a link
+  to the parent page and the linked documents (`saltcorn.page_document_link`).
+- **Document detail** (`/view/curator_document?id=`) with its owning pages, and
+  **Edit curator fields** (`/view/curator_document_edit?id=`): description,
+  process_code, save_status, doc_structure, doc_scope, language, processor,
+  pages_processed, when_transcribed, comments, reference_date, anomaly,
+  anomaly_comment, written straight to `core.document`. `doc_type` (a
+  `text[]`) is not shown, because Saltcorn has no array type.
+
+Saltcorn tables `bd_page`, `bd_document`, `bd_page_document`,
+`bd_search_request` and `bd_search_hit` are "PostgreSQL remote table"s on
+`birddog` as `birddog_ui`, with an empty password (read from
+`SC_EXTPG_PASS_birddog`). Only `bd_document` (update) and `bd_search_request`
+(insert) are writable.
+
+The app is defined in `deploy/apps/saltcorn/setup.js`, which creates or
+updates everything in place. To rebuild it (after applying migration 009):
+```
+docker compose cp apps/saltcorn/setup.js saltcorn:/tmp/setup.js
+docker compose exec -T -e NODE_PATH=/usr/local/lib/node_modules/@saltcorn/cli/node_modules \
+  saltcorn node /tmp/setup.js
+docker compose restart saltcorn   # the web process caches tables and views
+```
+`deploy/apps/saltcorn/curator-pack.json` is the same app exported as a
+Saltcorn pack (no passwords; untested, but meant for
+`saltcorn install-pack -f`; setup.js is the tested path).
 
 ## Memory
 
