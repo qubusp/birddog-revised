@@ -5,8 +5,10 @@
 #   1. checks the box: the repo is there and deploy/.env selects the data-box
 #      override (refuses to run against the apps box)
 #   2. adds missing deploy/.env keys (random values made on the server)
-#   3. applies new migrations as birddog, BEFORE any code is synced, streaming
-#      the local files into psql; applied files are recorded in
+#   3. applies new or changed migrations as birddog, BEFORE any code is
+#      synced, streaming the local files into psql: one file at a time, no
+#      wrapping transaction, lock_timeout 5s (fails instead of queueing live
+#      queries); applied files and their sha256 are recorded in
 #      public.schema_migrations (created here if missing)
 #   4. rsyncs the repo (DAGs and birddog/ are bind-mounted: no restart needed)
 #   5. reports which of postgres / airflow-* no longer match the compose config
@@ -21,7 +23,7 @@
 #   --restart-postgres  recreate postgres if its config or image changed.
 #                       ONLY WITH THE OWNER'S EXPLICIT OK.
 #   --all-migrations    re-apply every migration (they are idempotent), not
-#                       only new ones; use after editing an applied file
+#                       only new and changed ones
 #   --baseline-migrations  record every migration file as applied WITHOUT
 #                       running it (for a database known to be up to date,
 #                       instead of the first run re-applying all of them)
@@ -37,6 +39,8 @@ RESTART_POSTGRES=0
 ALL_MIGRATIONS=0
 BASELINE=0
 INIT_ROLES=0
+# per-statement wait for a lock before a migration gives up (BIRDDOG_LOCK_TIMEOUT)
+LOCK_TIMEOUT="${BIRDDOG_LOCK_TIMEOUT:-5s}"
 for arg in "$@"; do
     case "$arg" in
         --dry-run) DRY_RUN=1 ;;
@@ -112,7 +116,8 @@ apply_migrations() {
         if [ -z "$recorded" ] || [ "$ALL_MIGRATIONS" = 1 ]; then
             pending+=("$f")
         elif [ "$recorded" != "$sum" ]; then
-            info "WARNING $name changed since it was applied; not re-applied (--all-migrations re-runs every file)"
+            info "$name changed since it was applied: re-applying it (files are idempotent)"
+            pending+=("$f")
         fi
     done
     if [ ${#pending[@]} -eq 0 ]; then
@@ -145,8 +150,13 @@ SQL
     for f in "${pending[@]}"; do
         name=$(basename "$f")
         info "applying $name"
-        # the record is written only if every statement of the file succeeded
-        { cat "$f"; printf '\n'
+        # Each file runs in autocommit mode (no wrapping transaction), with a
+        # lock timeout: DDL such as CREATE OR REPLACE VIEW waiting behind a
+        # long read would otherwise queue every later query on that table
+        # (live Airflow UPDATEs stalled for minutes once). On a timeout psql
+        # stops, the file is not recorded, and the deploy stops; re-run later.
+        # The record is written only if every statement of the file succeeded.
+        { printf "SET lock_timeout = '%s';\n" "$LOCK_TIMEOUT"; cat "$f"; printf '\n'
           printf "INSERT INTO public.schema_migrations (filename, checksum) VALUES ('%s', '%s')\n" "$name" "$(sha256 "$f")"
           printf "ON CONFLICT (filename) DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = now();\n"
         } | psql_birddog || die "$name failed; nothing after it was applied, and the code was not synced"

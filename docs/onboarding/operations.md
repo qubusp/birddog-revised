@@ -72,8 +72,14 @@ the web app relies on, then `sh/deploy-apps`. Both refuse to run when the box's
    `public.schema_migrations` (file name and sha256; the table is created on
    the first run, which therefore applies every file once, as the `migrate`
    service used to on each `up`). A file that fails stops the deploy before the
-   code goes out. A recorded file whose content changed is reported, not
-   re-applied; `--all-migrations` re-runs every file. On a database known to be
+   code goes out. A recorded file whose content changed is re-applied;
+   `--all-migrations` re-runs every file. Each file runs on its own, in
+   autocommit mode (no wrapping transaction), after
+   `SET lock_timeout = '5s'` (`BIRDDOG_LOCK_TIMEOUT` to change): DDL that has
+   to wait for a lock (say a `CREATE OR REPLACE VIEW` behind a long read) fails
+   instead of queueing every later query on that table, which once stalled
+   live Airflow updates for minutes. The deploy then stops; run it again later.
+   Do not wrap a migration in `BEGIN`/`COMMIT`. On a database known to be
    up to date, `--baseline-migrations` records every file as applied without
    running any (use it for the first run if re-applying all 12 is unwanted).
 3. rsync of the repo. DAG files, `birddog/` and `resources/` are bind-mounted
