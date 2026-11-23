@@ -246,6 +246,8 @@ services:
       # no per-workspace Postgres roles (would need CREATEROLE)
       TJDB_SQL_MODE_DISABLE: "true"
       SAMPLE_DB: tooljet_sample
+      # admin exists; further users join by invitation only
+      DISABLE_SIGNUPS: "true"
       DISABLE_TOOLJET_TELEMETRY: "true"
       CHECK_FOR_UPDATES: "false"
       NODE_OPTIONS: --max-old-space-size=768
