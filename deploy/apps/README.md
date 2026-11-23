@@ -98,6 +98,47 @@ docker compose restart saltcorn   # the web process caches tables and views
 Saltcorn pack (no passwords; untested, but meant for
 `saltcorn install-pack -f`; setup.js is the tested path).
 
+## ToolJet: the Curator app
+
+`tooljet/curator.json` is a ready-made ToolJet app (an export file for
+ToolJet CE 3.20.256-lts). It has a search box over `core.search()`, a page
+panel (page fields, parent, linked documents) and a document form for the
+curation fields of `core.document` (description, process code, doc type,
+save status, doc structure, doc scope, language, processor, pages processed,
+when transcribed, comments, anomaly, anomaly comment). All queries use bind
+parameters. To change the app, edit `tooljet/build_curator.py` and run it to
+regenerate the JSON.
+
+Import it (ToolJet has no API tokens in CE, so this is done in the browser):
+
+1. Open https://apps.204-12-218-112.sslip.io and log in as admin.
+2. On the Applications page, click the **⋮** button to the right of
+   **Create an app**, then **Import from device**, and pick `curator.json`.
+3. Keep the app name `curator` (or change it) and click **Import app**. The
+   editor opens.
+4. The import also creates a PostgreSQL datasource named **birddog** with host,
+   port, database, user and SSL already filled in. ToolJet never imports
+   passwords, so set it: open **Data sources** (left sidebar, database icon),
+   then **birddog**. Next to **Password**, click **Edit**, paste
+   `BIRDDOG_UI_DB_PASSWORD` from the server's `deploy/.env`, then click **Save**.
+   You can check it with **Test connection**. In CE, saving applies to all three
+   environments.
+5. Back in the app, type a query (for example `ДАЗО 1-1-12`) and press Enter.
+   Use **Preview**, or **Release** the version to give curators the
+   viewer-only URL.
+
+If a PostgreSQL datasource named `birddog` already exists, the import reuses
+it as it is, and you can skip step 4. ToolJet 3.20 can't read server
+environment variables in datasource settings (`{{globals.server.*}}` is not
+resolved in CE), so the password can't come from `docker-compose.yml`. An
+alternative we haven't tested: store it as a workspace secret (Workspace
+settings > Workspace constants) and enter `{{secrets.<name>}}` as the password.
+
+Saving a document overwrites all of the form's fields at once. Empty text
+becomes NULL. Doc type is split on commas into a `text[]`. If someone else
+edits the same document between your load and your save, their changes to
+these fields are lost.
+
 ## Memory
 
 No swap on the host, so each service has a hard `mem_limit`:
