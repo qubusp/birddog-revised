@@ -28,3 +28,9 @@ saltcorn.{$PUBLIC_DOMAIN} {
 	encode zstd gzip
 	reverse_proxy saltcorn:3000
 }
+
+# Birddog web app (deploy/web/README.md)
+birddog.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy birddog-web:8000
+}

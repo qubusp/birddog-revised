@@ -1,0 +1,11 @@
+# build context is the repo root; only what deploy/web/Dockerfile copies
+*
+!requirements.txt
+!birddog
+!templates
+!static
+!resources
+!application.py
+!deploy/web/gunicorn.conf.py
+**/__pycache__
+**/.cache

@@ -297,6 +297,37 @@ services:
       postgres:
         condition: service_healthy
 
+  # The Birddog web app (birddog.<PUBLIC_DOMAIN>): Flask under gunicorn. Reads
+  # and writes Postgres as the birddog_web role (db/init/05-web.sh,
+  # migrations/012_web_role.sql); background work (page refresh, translation,
+  # watchlist checks) runs as Airflow DAG runs it triggers through the REST API
+  # as the Airflow user AIRFLOW_API_USER. See web/README.md.
+  birddog-web:
+    build:
+      context: ..
+      dockerfile: deploy/web/Dockerfile
+    image: birddog-web:local
+    restart: unless-stopped
+    mem_limit: 768m
+    environment:
+      BIRDDOG_DATABASE_URL: postgresql://birddog_web:${BIRDDOG_WEB_DB_PASSWORD}@postgres:5432/birddog
+      BIRDDOG_SECRET_KEY: ${BIRDDOG_SECRET_KEY}
+      AIRFLOW_API_URL: http://airflow-apiserver:8080
+      AIRFLOW_API_USER: ${AIRFLOW_API_USER:-birddog-web}
+      AIRFLOW_API_PASSWORD: ${AIRFLOW_API_PASSWORD}
+      # password-reset mail (optional)
+      BIRDDOG_SMTP_SERVER: ${BIRDDOG_SMTP_SERVER:-}
+      BIRDDOG_SMTP_PORT: ${BIRDDOG_SMTP_PORT:-}
+      BIRDDOG_SMTP_USERNAME: ${BIRDDOG_SMTP_USERNAME:-}
+      BIRDDOG_SMTP_PASSWORD: ${BIRDDOG_SMTP_PASSWORD:-}
+    ports:
+      - "127.0.0.1:8084:8000"
+    volumes:
+      - birddog-web-cache:/opt/birddog/.cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # Public HTTPS for Airflow, Mathesar and JupyterHub (the only ports open to the world)
   caddy:
     image: caddy:2.11.8
@@ -324,3 +355,4 @@ volumes:
   mathesar-media:
   jupyterhub-data:
   saltcorn-data:
+  birddog-web-cache:
