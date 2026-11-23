@@ -46,5 +46,32 @@ class TestEnvTableName(unittest.TestCase):
         self.assertEqual(created, ["bd_task_queue_STAGE", "bd_task_kv_store_STAGE"])
 
 
+class TestModeMismatch(unittest.TestCase):
+    def _mismatch(self, env):
+        from birddog.env import mode_mismatch
+        with patch.dict(os.environ, env, clear=True):
+            return mode_mismatch()
+
+    def test_consistent_modes_are_quiet(self):
+        self.assertIsNone(self._mismatch({}))
+        self.assertIsNone(self._mismatch({"BIRDDOG_DATABASE_URL": "postgresql://x/y"}))
+        self.assertIsNone(self._mismatch({"BIRDDOG_DATABASE_URL": "postgresql://x/y",
+                                          "BIRDDOG_STORE_BACKEND": "postgres"}))
+        self.assertIsNone(self._mismatch({"BIRDDOG_STORE_BACKEND": "sqlite"}))
+        self.assertIsNone(self._mismatch({"BIRDDOG_AWS_ENVIRONMENT": "1"}))
+
+    def test_database_with_non_postgres_store(self):
+        for backend in ("sqlite", "dynamodb"):
+            with self.subTest(backend=backend):
+                message = self._mismatch({"BIRDDOG_DATABASE_URL": "postgresql://x/y",
+                                          "BIRDDOG_STORE_BACKEND": backend})
+                self.assertIn(f"BIRDDOG_STORE_BACKEND={backend}", message)
+                self.assertIn("BIRDDOG_DATABASE_URL is set", message)
+
+    def test_postgres_store_without_database(self):
+        message = self._mismatch({"BIRDDOG_STORE_BACKEND": "postgres"})
+        self.assertIn("BIRDDOG_DATABASE_URL is not set", message)
+
+
 if __name__ == "__main__":
     unittest.main()

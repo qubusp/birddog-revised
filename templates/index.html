@@ -73,6 +73,23 @@
       display: none !important;
     }
   </style>
+  <style>
+    /* search results: long Cyrillic titles and snippets wrap instead of overflowing */
+    .search-results .search-title,
+    .search-results .search-snippet,
+    .search-results .search-owner {
+      overflow-wrap: anywhere;
+    }
+    .search-results .search-snippet {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .search-results .search-open {
+      text-align: start;
+    }
+  </style>
 
 </head>
 <body>
@@ -96,6 +113,9 @@
           {% if user %}
             <a class="nav-link {{ 'active' if landing_tab == 'watchlists' else '' }}" id="nav-watchlists-tab" data-bs-toggle="tab" href="#nav-watchlists" role="tab" aria-controls="nav-watchlists" aria-selected="{{ 'true' if landing_tab == 'watchlists' else 'false' }}">Watchlists</a>
             <a class="nav-link" id="nav-browse-tab" data-bs-toggle="tab" href="#nav-browse" role="tab" aria-controls="nav-browse" aria-selected="false">Browse</a>
+            {% if search_available %}
+            <a class="nav-link" id="nav-search-tab" data-bs-toggle="tab" href="#nav-search" role="tab" aria-controls="nav-search" aria-selected="false">Search</a>
+            {% endif %}
             <a class="nav-link" id="nav-archives-tab" data-bs-toggle="tab" href="#nav-archives" role="tab" aria-controls="nav-archives" aria-selected="false">Archives</a>
             <a class="nav-link" id="nav-profile-tab" data-bs-toggle="tab" href="#nav-profile" role="tab" aria-controls="nav-profile" aria-selected="false">Profile</a>
           {% endif %}
@@ -442,7 +462,8 @@
             </div>
 
             <div class="d-flex justify-content-between align-items-center mb-2">
-              <h5 class="mb-0" id="page-title">Page Title</h5>
+              <!-- tabindex -1: focus lands here after opening a search result -->
+              <h5 class="mb-0" id="page-title" tabindex="-1">Page Title</h5>
               <button class="btn btn-link p-0 text-decoration-none" 
                       type="button" 
                       data-bs-toggle="collapse" 
@@ -528,6 +549,31 @@
     </div>
   </div>
 </div>
+
+{% if user and search_available %}
+<!-- Search Panel (GET /search: pages and documents, keyword + fuzzy) -->
+<div class="tab-pane fade" id="nav-search" role="tabpanel" aria-labelledby="nav-search-tab">
+  <div class="container mt-4">
+    <h3 id="search-heading">Search</h3>
+    <form id="search-form" role="search" aria-labelledby="search-heading" class="mb-3" novalidate>
+      <label for="search-input" class="form-label">Search pages and documents</label>
+      <div class="input-group">
+        <input type="search" class="form-control" id="search-input" name="q" maxlength="200"
+               autocomplete="off" spellcheck="false" enterkeyhint="search" aria-describedby="search-help">
+        <button type="submit" class="btn btn-primary" id="search-submit">
+          <i class="bi bi-search" aria-hidden="true"></i><span class="ms-1">Search</span>
+        </button>
+      </div>
+      <div id="search-help" class="form-text">
+        An archive code such as <span lang="uk">ДАХмО 315-1-880</span>, a title, or words from a description.
+        Small spelling mistakes are matched too.
+      </div>
+    </form>
+    <div id="search-status" class="mb-2" role="status" aria-live="polite" aria-atomic="true"></div>
+    <ol id="search-results" class="list-group search-results" aria-label="Search results"></ol>
+  </div>
+</div>
+{% endif %}
 
 <!-- Archives Panel -->
 <div class="tab-pane fade" id="nav-archives" role="tabpanel">

@@ -229,6 +229,90 @@ class TestCatalogDatabase(unittest.TestCase):
             with catalog._cursor() as cur:
                 cur.execute("DELETE FROM core.archive_root WHERE false")
 
+    def test_connections_are_pooled(self):
+        # one connection per process, not one per call (catalog used to
+        # reconnect on every read)
+        with catalog._cursor() as cur:
+            cur.execute("SELECT pg_backend_pid()")
+            first = cur.fetchone()[0]
+        catalog.search("Метрична книга", limit=1)
+        catalog.page_payload(f"Архів:{_ROOT}")
+        with catalog._cursor() as cur:
+            cur.execute("SELECT pg_backend_pid()")
+            self.assertEqual(cur.fetchone()[0], first)
+
+    def test_pooled_connection_stays_read_only_after_an_error(self):
+        import psycopg2
+        for _ in range(2):
+            with self.assertRaises(psycopg2.errors.ReadOnlySqlTransaction):
+                with catalog._cursor() as cur:
+                    cur.execute("INSERT INTO core.archive_root (title, label) VALUES ('x', 'x')")
+        # the failed transaction was rolled back; the connection is usable
+        with catalog._cursor() as cur:
+            cur.execute("SHOW transaction_read_only")
+            self.assertEqual(cur.fetchone()[0], "on")
+
+    def test_each_call_is_one_transaction(self):
+        # a page payload's queries share one snapshot
+        with catalog._cursor() as cur:
+            cur.execute("SELECT now()")
+            first = cur.fetchone()[0]
+            cur.execute("SELECT now()")
+            self.assertEqual(cur.fetchone()[0], first)
+
+
+class TestReadPool(unittest.TestCase):
+    """app_db's read-only pool, without a database."""
+
+    def setUp(self):
+        from birddog import app_db
+        self.app_db = app_db
+        app_db.reset_pool()
+        self.addCleanup(app_db.reset_pool)
+
+    def _fake_connect(self):
+        conns = []
+
+        def connect(url):
+            conn = MagicMock(closed=False)
+            conn.url = url
+            conns.append(conn)
+            return conn
+        return conns, connect
+
+    def test_catalog_reads_borrow_a_read_only_pooled_connection(self):
+        conns, connect = self._fake_connect()
+        with mock.patch.dict(os.environ, {"BIRDDOG_DATABASE_URL": "postgresql://h/one"}), \
+             patch("psycopg2.connect", side_effect=connect):
+            for _ in range(3):
+                with catalog._cursor():
+                    pass
+        self.assertEqual(len(conns), 1)
+        conns[0].set_session.assert_called_once_with(readonly=True, autocommit=False)
+        self.assertEqual(conns[0].commit.call_count, 3)
+
+    def test_read_pool_is_separate_from_the_store_pool(self):
+        conns, connect = self._fake_connect()
+        with mock.patch.dict(os.environ, {"BIRDDOG_DATABASE_URL": "postgresql://h/one"}), \
+             patch("psycopg2.connect", side_effect=connect):
+            with self.app_db.read_cursor():
+                pass
+            with self.app_db.cursor():
+                pass
+        self.assertEqual(len(conns), 2)
+        self.assertTrue(conns[1].autocommit)
+        conns[1].set_session.assert_not_called()
+
+    def test_new_database_url_gets_a_new_pool(self):
+        conns, connect = self._fake_connect()
+        with patch("psycopg2.connect", side_effect=connect):
+            for url in ("postgresql://h/one", "postgresql://h/two"):
+                with mock.patch.dict(os.environ, {"BIRDDOG_DATABASE_URL": url}):
+                    with catalog._cursor():
+                        pass
+        self.assertEqual([c.url for c in conns], ["postgresql://h/one", "postgresql://h/two"])
+        conns[0].close.assert_called_once()
+
 
 # ----------------------------------------------------------------------------
 # routes
@@ -351,6 +435,32 @@ class TestRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_json(), {"query": "ДАЗО 1-1-12", "results": hits})
         search.assert_called_once_with("ДАЗО 1-1-12", limit=5)
+
+    def _home(self):
+        self.user.get_watchlist = lambda: {}
+        self.service.runtime.database_update_enabled = False
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        return resp.get_data(as_text=True)
+
+    def test_home_has_search_box_with_database(self):
+        html = self._home()
+        self.assertIn('id="nav-search-tab"', html)
+        self.assertIn('<label for="search-input"', html)
+        self.assertIn('role="search"', html)
+        self.assertIn('id="search-status" class="mb-2" role="status" aria-live="polite"', html)
+
+    def test_home_has_no_search_box_without_database(self):
+        with patch("birddog.catalog.enabled", return_value=False):
+            html = self._home()
+        self.assertNotIn("nav-search-tab", html)
+        self.assertNotIn("search-input", html)
+
+    def test_home_has_no_search_box_when_logged_out(self):
+        with self.client.session_transaction() as sess:
+            sess.clear()
+        html = self._home()
+        self.assertNotIn("search-input", html)
 
     def test_search_without_database(self):
         with patch("birddog.catalog.enabled", return_value=False):

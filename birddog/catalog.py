@@ -2,8 +2,9 @@
 Postgres (core.*), which the Airflow pipeline keeps fresh.
 
 Replaces the app's reads through NocoDB and most of its live wiki fetches.
-Everything here is read-only (the connection is opened read-only); the
-writers are birddog/pipeline.py and the DAGs.
+Everything here is read-only: queries run on pooled read-only connections
+(app_db.read_cursor(), one read-only transaction per call); the writers are
+birddog/pipeline.py and the DAGs.
 
 page_payload() builds the same JSON the browse view (static/js/birddog.js)
 renders from a live wiki page (core.Page.page): description, dates,
@@ -17,10 +18,9 @@ when the page links more than one document, a "Documents" table.
 import hashlib
 import threading
 import time
-from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from birddog import pg
+from birddog import app_db, pg
 from birddog.utility import form_text_item
 from birddog.wiki import (
     ARCHIVE_BASE,
@@ -59,12 +59,8 @@ def enabled():
     return pg.enabled()
 
 
-@contextmanager
 def _cursor():
-    with pg.connect() as conn:
-        conn.set_session(readonly=True)
-        with conn.cursor() as cur:
-            yield cur
+    return app_db.read_cursor()
 
 
 def _rows(cur):

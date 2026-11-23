@@ -4,7 +4,11 @@ The Postgres stores in store.py / log.py / user_store.py run on every request
 (and LogService writes a row per store call), so they borrow connections from
 a small per-process pool instead of opening one each time like pg.connect().
 Callers block when the pool is busy rather than failing. Connections are in
-autocommit mode (one round trip per call)."""
+autocommit mode (one round trip per call).
+
+The catalog read layer (catalog.py) has its own pool of read-only
+connections (read_cursor()): each borrow is one read-only transaction, so a
+page payload's several queries see one snapshot, and a stray write fails."""
 
 import os
 import threading
@@ -16,6 +20,7 @@ _POOL_MAX = int(os.environ.get("BIRDDOG_DB_POOL_MAX", "8"))
 
 _lock = threading.Lock()
 _pool = None
+_read_pool = None
 
 
 class _Pool:
@@ -23,8 +28,9 @@ class _Pool:
     open. (psycopg2.pool closes every connection above minconn on return, so
     with a lazy minconn of 0 it would reconnect on every call.)"""
 
-    def __init__(self, url, size):
+    def __init__(self, url, size, readonly=False):
         self.url = url
+        self.readonly = readonly
         self.pid = os.getpid()
         self._idle = []
         self._idle_lock = threading.Lock()
@@ -38,9 +44,14 @@ class _Pool:
                 conn = self._idle.pop() if self._idle else None
             if conn is None or conn.closed:
                 conn = psycopg2.connect(self.url)
-                # every store call is a single statement, so autocommit
-                # saves the BEGIN/COMMIT round trips without losing atomicity
-                conn.autocommit = True
+                if self.readonly:
+                    # one read-only transaction per borrow (committed or
+                    # rolled back by connection())
+                    conn.set_session(readonly=True, autocommit=False)
+                else:
+                    # every store call is a single statement, so autocommit
+                    # saves the BEGIN/COMMIT round trips without losing atomicity
+                    conn.autocommit = True
             return conn
         except Exception:
             self._slots.release()
@@ -64,36 +75,50 @@ class _Pool:
             conn.close()
 
 
-def _get_pool():
-    global _pool
-    pool = _pool
-    if pool is not None and pool.pid == os.getpid():
+def _usable(pool, url):
+    # a forked worker (gunicorn) must not share its parent's sockets
+    return pool is not None and pool.pid == os.getpid() and pool.url == url
+
+
+def _get_pool(readonly=False):
+    global _pool, _read_pool
+    url = pg.database_url()
+    pool = _read_pool if readonly else _pool
+    if _usable(pool, url):
         return pool
     with _lock:
-        # a forked worker (gunicorn) must not share its parent's sockets
-        if _pool is None or _pool.pid != os.getpid():
-            url = pg.database_url()
+        pool = _read_pool if readonly else _pool
+        if not _usable(pool, url):
             if not url:
                 raise RuntimeError("BIRDDOG_DATABASE_URL is not set (needed by the Postgres store backend)")
-            _pool = _Pool(url, _POOL_MAX)
-        return _pool
+            if pool is not None and pool.pid == os.getpid():
+                pool.close_all()   # BIRDDOG_DATABASE_URL changed
+            pool = _Pool(url, _POOL_MAX, readonly=readonly)
+            if readonly:
+                _read_pool = pool
+            else:
+                _pool = pool
+        return pool
 
 
 def reset_pool():
     """Close every pooled connection (tests, or after BIRDDOG_DATABASE_URL changes)."""
-    global _pool
+    global _pool, _read_pool
     with _lock:
-        if _pool is not None and _pool.pid == os.getpid():
-            _pool.close_all()
-        _pool = None
+        for pool in (_pool, _read_pool):
+            if pool is not None and pool.pid == os.getpid():
+                pool.close_all()
+        _pool = _read_pool = None
 
 
 @contextmanager
-def connection():
-    """Yields a pooled autocommit connection: each statement commits on its
-    own. Use `with conn:` inside for a multi-statement transaction."""
+def connection(readonly=False):
+    """Yields a pooled connection. By default it is in autocommit mode: each
+    statement commits on its own; use `with conn:` inside for a
+    multi-statement transaction. readonly=True borrows from the read-only
+    pool instead: the whole block is one read-only transaction."""
     import psycopg2
-    pool = _get_pool()
+    pool = _get_pool(readonly)
     conn = pool.get()
     broken = False
     try:
@@ -116,4 +141,11 @@ def connection():
 @contextmanager
 def cursor():
     with connection() as conn, conn.cursor() as cur:
+        yield cur
+
+
+@contextmanager
+def read_cursor():
+    """A cursor on a pooled read-only connection (one transaction)."""
+    with connection(readonly=True) as conn, conn.cursor() as cur:
         yield cur

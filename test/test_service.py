@@ -96,6 +96,20 @@ class TestServiceHelpers(unittest.TestCase):
         # Empty becomes default
         self.assertEqual(service.ascii_filename(""), "download")
 
+    def test_mode_mismatch_warns_at_startup(self):
+        env = {"BIRDDOG_DATABASE_URL": "postgresql://x/y", "BIRDDOG_STORE_BACKEND": "sqlite"}
+        with patch.dict("os.environ", env), patch.object(service._logger, "warning") as warning:
+            self.assertIs(service.create_app(), app)
+        warning.assert_called_once()
+        self.assertIn("BIRDDOG_STORE_BACKEND=sqlite", warning.call_args[0][0])
+
+    def test_consistent_mode_does_not_warn(self):
+        with patch.dict("os.environ", {"BIRDDOG_DATABASE_URL": "postgresql://x/y"}), \
+             patch.dict("os.environ", {"BIRDDOG_STORE_BACKEND": ""}), \
+             patch.object(service._logger, "warning") as warning:
+            self.assertIsNone(service.warn_on_mode_mismatch())
+        warning.assert_not_called()
+
 
 class TestUsersManager(unittest.TestCase):
     def setUp(self):
