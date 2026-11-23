@@ -22,3 +22,6 @@ nocodb
 # deploy secrets
 deploy/.env
 deploy/rclone/rclone.conf
+
+# local Elyra (JupyterLab pipeline editor) venv
+.venv-elyra/
