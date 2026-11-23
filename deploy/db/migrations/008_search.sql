@@ -32,11 +32,11 @@ CREATE INDEX IF NOT EXISTS document_title_trgm_idx ON core.document USING gin (t
 -- Keyword hits come first (the page whose code is the query, then exact
 -- phrase, then all words), then fuzzy
 -- title matches fill up to max_rows.
-DROP FUNCTION IF EXISTS core.search(text, int);
+-- CREATE OR REPLACE, not DROP + CREATE: saltcorn.search_hit (009) depends on it
 -- loads pg_trgm so its setting exists for the SET clause below (an unloaded,
 -- placeholder setting may only be set by a superuser)
 SELECT similarity('', '');
-CREATE FUNCTION core.search(q text, max_rows int DEFAULT 50)
+CREATE OR REPLACE FUNCTION core.search(q text, max_rows int DEFAULT 50)
 RETURNS TABLE (kind text, id bigint, title text, url text, snippet text, score real)
 LANGUAGE plpgsql STABLE
 -- 0.3 (the default) lets short codes match most of the table
