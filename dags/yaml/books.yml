@@ -64,3 +64,43 @@ read_books:
       execution_timeout:
         __type__: datetime.timedelta
         hours: 1
+
+# Full transcription (migration 023, birddog/book_transcripts.py): Sonnet
+# transcribes every page (text, register entries, places); Opus redoes the
+# pages Sonnet marks illegible. Its own queue, core.book_transcript_queue, so
+# read_books' rows stay as they are. `enqueue` queues that many books the place
+# reading finished (status done in core.book_read); `document_ids` (comma list)
+# queues those books. Each run transcribes queued books until `budget_usd` is
+# spent (interrupted books resume next run), then `index` rebuilds
+# core.book_entry / core.book_entry_place for finished books (no API calls).
+transcribe_books:
+  description: Claude transcribes archive books in full (text, register entries, places)
+  schedule: null
+  params:
+    enqueue: 0            # books finished by read_books to queue this run
+    document_ids: ""      # or these core.document ids, comma-separated
+    budget_usd: 60
+  tasks:
+    - task_id: enqueue
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.enqueue_transcripts
+      enqueue: "{{ params.enqueue }}"
+      document_ids: "{{ params.document_ids }}"
+      retries: 0
+    - task_id: transcribe
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.transcribe_books
+      budget_usd: "{{ params.budget_usd }}"
+      pool: llm_api
+      dependencies: [enqueue]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 12
+    - task_id: index
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.index_transcripts
+      trigger_rule: all_done   # index what finished even if transcribe failed or timed out
+      dependencies: [transcribe]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 1

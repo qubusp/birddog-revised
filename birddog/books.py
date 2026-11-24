@@ -123,9 +123,12 @@ def _input_tokens(usage):
             + (getattr(usage, "cache_read_input_tokens", 0) or 0))
 
 
-def ask(model, content, schema, effort, max_tokens=16000):
+def ask(model, content, schema, effort, max_tokens=16000, stream=False):
     """One structured call. Returns (parsed JSON, input tokens, output tokens, $).
-    Raises BookError on a refusal or a cut-off answer."""
+    Raises BookError on a refusal or a cut-off answer. `stream` sends it as a
+    stream and waits for the final message: the SDK wants that for a large
+    max_tokens (full transcriptions), where one answer can outlast a plain
+    request's HTTP timeout."""
     kwargs = dict(
         model=model,
         max_tokens=max_tokens,
@@ -133,9 +136,15 @@ def ask(model, content, schema, effort, max_tokens=16000):
         output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
     )
     if model in _FALLBACK_MODELS:
-        response = client().beta.messages.create(betas=[_FALLBACK_BETA], fallbacks="default", **kwargs)
+        kwargs.update(betas=[_FALLBACK_BETA], fallbacks="default")
+        api = client().beta.messages
     else:
-        response = client().messages.create(**kwargs)
+        api = client().messages
+    if stream:
+        with api.stream(**kwargs) as s:
+            response = s.get_final_message()
+    else:
+        response = api.create(**kwargs)
     tokens_in, tokens_out = _input_tokens(response.usage), response.usage.output_tokens or 0
     # the fallback may have answered on another model: price what ran
     dollars = cost_usd(response.model or model, tokens_in, tokens_out)

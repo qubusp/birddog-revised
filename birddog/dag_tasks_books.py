@@ -1,5 +1,6 @@
-"""Task callables for the book reading DAG (dags/yaml/books.yml); the work is
-in birddog/books.py.
+"""Task callables for the book DAGs (dags/yaml/books.yml): read_books (places;
+the work is in birddog/books.py) and transcribe_books (full text and register
+entries; birddog/book_transcripts.py).
 
 Every step works on whatever is in core.book_read at the time: a run probes
 all pending books, reads all approved ones (including books a person approved
@@ -80,4 +81,33 @@ def assemble_books():
     _require_key()
     summary = assemble_read(_run_id())
     _logger.info("assemble: %s", summary)
+    return summary
+
+
+# --- transcribe_books ----------------------------------------------------------
+
+DEFAULT_TRANSCRIBE_BUDGET_USD = 60.0
+
+
+def enqueue_transcripts(enqueue="", document_ids=""):
+    from birddog.book_transcripts import enqueue as enqueue_rows
+    ids = [int(x) for x in str(document_ids or "").replace(";", ",").split(",") if x.strip().isdigit()]
+    n = enqueue_rows(_int(enqueue, 0), ids)
+    _logger.info("queued %d books for transcription", n)
+    return n
+
+
+def transcribe_books(budget_usd=""):
+    from birddog.book_transcripts import transcribe_queued
+    _require_key()
+    budget = _float(budget_usd, DEFAULT_TRANSCRIBE_BUDGET_USD)
+    summary = transcribe_queued(_run_id(), budget)
+    _logger.info("transcribe (budget $%.2f): %s", budget, summary)
+    return summary
+
+
+def index_transcripts():
+    from birddog.book_transcripts import index_transcribed
+    summary = index_transcribed(_run_id())
+    _logger.info("index: %s", summary)
     return summary
