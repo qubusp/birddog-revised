@@ -10,10 +10,18 @@
 -- Mentions come from each page's best reading: the Opus re-read when there is
 -- one, else Sonnet's. Read-only (Mathesar shows views read-only). Idempotent.
 
--- dropped first: 020 changed location_id to text, and a re-run must not fail on
--- the type (CREATE OR REPLACE VIEW cannot change a column's type)
-DROP VIEW IF EXISTS views.books__places;
-CREATE VIEW views.books__places AS
+-- Drop only while the view still has the old bigint location_id (pre-020): views
+-- in 021 (map__locations, map__book_places) depend on this one, so an
+-- unconditional DROP would fail on re-runs (or, with CASCADE, delete them).
+DO $$
+BEGIN
+    IF (SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'views' AND table_name = 'books__places'
+          AND column_name = 'location_id') = 'bigint' THEN
+        DROP VIEW views.books__places CASCADE;
+    END IF;
+END $$;
+CREATE OR REPLACE VIEW views.books__places AS
 SELECT b.document_id,
        d.title,
        p.ordinality::int                       AS place_no,
