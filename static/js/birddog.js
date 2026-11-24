@@ -1190,7 +1190,7 @@ function render_archives_table() {
             ? `<input type="text" class="form-control form-control-sm" aria-label="Description for ${escape_attr(archive.title)}" data-original="${escape_attr(description)}" value="${escape_attr(description)}" onclick="event.stopPropagation()" oninput="update_archive_save_state(this)">`
             : escape_attr(description);
         const save_cell = can_edit
-            ? `<button class="btn btn-primary btn-sm" title="Save Changes" aria-label="Save changes to ${escape_attr(archive.title)}" onclick="event.stopPropagation(); save_archive_row(this)" disabled>
+            ? `<button class="btn btn-primary btn-sm btn-icon" title="Save Changes" aria-label="Save changes to ${escape_attr(archive.title)}" onclick="event.stopPropagation(); save_archive_row(this)" disabled>
                    <i class="bi bi-arrow-up-square" aria-hidden="true"></i>
                </button>`
             : '';
@@ -1200,7 +1200,7 @@ function render_archives_table() {
                 <td style="word-break: break-word;">${label_cell}</td>
                 <td style="word-break: break-word;">${description_cell}</td>
                 <td>
-                    <a href="${escape_attr(archive.url)}" target="birddog_archive_source" class="btn btn-primary btn-sm" title="View Source" aria-label="View source" onclick="event.stopPropagation()">
+                    <a href="${escape_attr(archive.url)}" target="birddog_archive_source" class="btn btn-outline-primary btn-sm btn-icon" title="View Source" aria-label="View source" onclick="event.stopPropagation()">
                         <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
                     </a>
                 </td>
@@ -1313,12 +1313,12 @@ function render_watchlist() {
                 <td>${format_date(item.last_checked_date)}</td>
                 <td>${format_date(item.cutoff_date)}</td>
                 <td>
-                    <button class="btn btn-primary check-watchlist-btn" title="Check for Updates" aria-label="Check ${escape_attr(item.label)} for updates">
+                    <button class="btn btn-outline-primary btn-icon check-watchlist-btn" title="Check for Updates" aria-label="Check ${escape_attr(item.label)} for updates">
                         <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
                     </button>
                 </td>
                 <td>
-                    <button class="btn btn-primary remove-watchlist-btn" title="Remove from Watchlist" aria-label="Remove ${escape_attr(item.label)} from watchlist">
+                    <button class="btn btn-outline-danger btn-icon remove-watchlist-btn" title="Remove from Watchlist" aria-label="Remove ${escape_attr(item.label)} from watchlist">
                         <i class="bi bi-x-square" aria-hidden="true"></i>
                     </button>
                 </td>
@@ -1874,8 +1874,8 @@ function alert_row_html(row) {
         : (last_resolved ? format_date(last_resolved, false) : '');
 
     let badges = '';
-    if (meta.new_page) badges += ' <span class="badge bg-success">NEW</span>';
-    if (meta.insignificant) badges += ' <span class="badge bg-secondary">MINOR</span>';
+    if (meta.new_page) badges += ' <span class="badge bg-success">New</span>';
+    if (meta.insignificant) badges += ' <span class="badge bg-secondary">Minor</span>';
 
     // a "moved_to" entry (issue #136) means this watch's own scope was
     // moved on the wiki, not an ordinary content change -- resolving it
@@ -1921,7 +1921,7 @@ function alert_row_html(row) {
           <td>${cutoff ? format_date(cutoff, false) : ''}</td>
           <td class="text-nowrap">
             <button
-                class="btn btn-sm btn-primary mark-resolved-btn"
+                class="btn btn-sm btn-outline-primary btn-icon mark-resolved-btn"
                 title="Mark Resolved"
                 aria-label="Mark ${escape_attr(full_label)} resolved"
                 data-watch-title="${escape_attr(watch_title)}"
