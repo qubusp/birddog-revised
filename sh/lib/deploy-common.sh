@@ -40,6 +40,7 @@ RSYNC_EXCLUDES=(
     --exclude=graphify-out
     --exclude=/notebooks
     --exclude=/research
+    --exclude=/archive
     --exclude=/var
     --exclude=/excel
     --exclude=/static/downloads

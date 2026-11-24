@@ -132,7 +132,7 @@ the HTML report (`pip install coverage`).
 Use this only when you need the old NocoDB behaviour.
 
 ```bash
-cd nocodb-dev && docker compose up -d        # NocoDB on :8080
+cd archive/nocodb-dev && docker compose up -d   # NocoDB on :8080
 export NOCODB_API_TOKEN_LOCAL=...            # create a token in the NocoDB UI
 sh/local_run                                 # debug on :2003, sets BIRDDOG_NOCODB_ENV=LOCAL
 sh/local_run --no-debug                      # no reloader

@@ -41,7 +41,7 @@ Only Caddy (80 and 443) is meant to be reachable from the internet.
 - Do not edit files on the server. The next deploy overwrites them, and deletes
   files that are not in your checkout (`rsync --delete`). The rsync never copies
   or deletes `deploy/.env*`, `deploy/rclone/*.conf`, `.git`, caches (`.cache`,
-  `__pycache__`), virtualenvs, `graphify-out`, `notebooks/` or `research/`
+  `__pycache__`), virtualenvs, `graphify-out`, `notebooks/`, `research/` or `archive/`
   (list: `RSYNC_EXCLUDES` in `sh/lib/deploy-common.sh`).
 
 ## Deploying code

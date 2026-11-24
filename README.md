@@ -43,7 +43,7 @@ code path still runs when `BIRDDOG_DATABASE_URL` is unset
 - Google Cloud–powered translation of page content
 - Generate and export tracking spreadsheets (Excel)
 - Web UI for report browsing, logs, and usage metrics
-- [Experimental] Location processing tools (`research/`)
+- [Experimental] Location processing tools (`birddog/locations/`; research in `archive/research/`)
   - Location matching against administrative hierarchies
   - AI-powered location extraction from text descriptions
   - Cyrillic text handling for Russian/Ukrainian place names
@@ -72,9 +72,7 @@ birddog/
 ├── docs/                    # End-user guide and API reference
 ├── test/                    # Tests (pytest)
 ├── sh/                      # Dev/run/deploy shell scripts
-├── nocodb-dev/               # Local NocoDB (Docker) setup for development
-├── notebooks/                # Jupyter notebooks
-└── research/                  # Experimental tools
+└── archive/                  # Unused upstream files: notebooks, research, nocodb-dev, EB deploy (see archive/README.md)
     └── triage/locations/       # Location processing pipeline
 ```
 
@@ -114,7 +112,7 @@ Internal state is split across two mechanisms, each of which picks its backend a
 - **Key/value store and task queues** (`birddog/store.py`) — used for things like the watchlist (`watcher.py`), tracker state (`tracker.py`), user records (`user.py`), and the task queue (`task.py`). Backed by **SQLite** locally (files under `.cache/`, e.g. `.cache/key_value_store.db`, `.cache/string_queues.db`) and by **DynamoDB** when `detect_environment()` returns `"aws"`.
 - **Object cache** (`birddog/cache.py`) — used for larger cached payloads (e.g. scraped page content). Backed by the **local filesystem** under `.cache/` when `BIRDDOG_USE_LOCAL_CACHE` is set, and by an **S3** bucket (`birddog-data`) otherwise.
 
-In short: run locally and everything lives under `.cache/` (filesystem + SQLite); run on AWS and it's S3 + DynamoDB instead. `sh/local_run` sets `BIRDDOG_USE_LOCAL_CACHE=True` for you; `sh/aws_run` sets `BIRDDOG_AWS_ENVIRONMENT=1` on the deployed environment.
+In short: run locally and everything lives under `.cache/` (filesystem + SQLite); run on AWS and it's S3 + DynamoDB instead. `sh/local_run` sets `BIRDDOG_USE_LOCAL_CACHE=True` for you; `archive/sh/aws_run` set `BIRDDOG_AWS_ENVIRONMENT=1` on the deployed environment.
 
 ### NocoDB output database
 
@@ -154,11 +152,11 @@ and expects the corresponding token environment variable to be set, per `resourc
 For local development, run NocoDB via Docker Compose:
 
 ```bash
-cd nocodb-dev
+cd archive/nocodb-dev
 docker compose up -d
 ```
 
-This starts NocoDB on `http://localhost:8080`, persisting its SQLite data to the `nocodb/` directory at the repo root (update the volume path in `nocodb-dev/docker-compose.yml` if your checkout lives elsewhere). Create an API token in the NocoDB UI, export it as `NOCODB_API_TOKEN_LOCAL`, and set `BIRDDOG_NOCODB_ENV=LOCAL` before starting Birddog (`sh/local_run` does this for you).
+This starts NocoDB on `http://localhost:8080`, persisting its SQLite data to the `nocodb/` directory at the repo root (update the volume path in `archive/nocodb-dev/docker-compose.yml` if your checkout lives elsewhere). Create an API token in the NocoDB UI, export it as `NOCODB_API_TOKEN_LOCAL`, and set `BIRDDOG_NOCODB_ENV=LOCAL` before starting Birddog (`sh/local_run` does this for you).
 
 ---
 
@@ -230,7 +228,7 @@ See `docs/help.md` for an end-user walkthrough of the UI and `docs/birddog_api_r
 
 ## AWS Deployment
 
-Birddog deploys to AWS Elastic Beanstalk, managed via `sh/aws_run`. This requires the AWS CLI, the `eb` CLI, and an AWS profile named `birddog-admin` (`aws configure --profile birddog-admin`).
+**Archived.** The rebuilt stack deploys with `sh/deploy-data` and `sh/deploy-apps`. The old Elastic Beanstalk deploy is kept in `archive/` (`archive/sh/aws_run`, `archive/.ebextensions`); run it from the repo root after moving those back. It requires the AWS CLI, the `eb` CLI, and an AWS profile named `birddog-admin` (`aws configure --profile birddog-admin`).
 
 ```bash
 sh/aws_run init      # one-time: eb init for the birddog EB application
@@ -243,7 +241,7 @@ sh/aws_run terminate         # tear down the birddog-env environment
 
 `deploy`/`setenv` push `BIRDDOG_*` and `GOOGLE_TRANSLATE_API_KEY` env vars to the environment (values are read from your shell, so export them first — they are intentionally not stored in the script). The deployed app talks to hosted NocoDB Cloud, selecting the target base via `BIRDDOG_NOCODB_ENV` (a key in `resources/db_config.json`). Pass `--stage` (default) or `--prod` before the command to choose it, e.g. `sh/aws_run --prod deploy`.
 
-`.ebextensions/01-root-volume.config` bumps the EB instance root volume to 30GB for the Birddog environment.
+`archive/.ebextensions/01-root-volume.config` bumped the EB instance root volume to 30GB for the Birddog environment.
 
 ---
 

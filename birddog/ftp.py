@@ -35,8 +35,8 @@ no fingerprint match means not the same file, so no link. A PDF row re-enters th
 view when its size or mtime changes, and on_documents_changed() puts affected
 rows back in the view when a Document is written.
 
-The reference walk lives in notebooks/sftp.ipynb; matching experiments are in
-notebooks/FTP Sync.ipynb.
+The reference walk lives in archive/notebooks/sftp.ipynb; matching experiments
+are in archive/notebooks/FTP Sync.ipynb.
 """
 
 import hashlib
@@ -145,7 +145,7 @@ def _depth(path):
     Depth of an item below the FTP root.
 
     "/Berdichev" -> 0, "/Berdichev/1-2-3.pdf" -> 1. Matches the semantics of the
-    existing research/ftp inventory export.
+    existing archive/research/ftp inventory export.
     """
     return max(len(PurePosixPath(path).parts) - 2, 0)
 
@@ -388,7 +388,7 @@ class FTPSiteManager(HeartbeatManager):
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
         # stop paramiko scanning ssh-agent / ~/.ssh, which can hang or pick the
-        # wrong credential (see notebooks/sftp.ipynb).
+        # wrong credential (see archive/notebooks/sftp.ipynb).
         old_sock = os.environ.pop("SSH_AUTH_SOCK", None)
         try:
             client.connect(

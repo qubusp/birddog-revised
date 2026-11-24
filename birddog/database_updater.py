@@ -326,7 +326,7 @@ def bibliographical_lookup_fields(doc_rec, owner_pages):
     return update
 
 # Fields written onto a Document record by the spreadsheet import pipeline
-# (database_importer.py: doc_only_fields | doc_and_page_fields). A document
+# (archive/birddog/database_importer.py: doc_only_fields | doc_and_page_fields). A document
 # carrying any of these represents curated work (transcription progress,
 # processor notes, etc.) that must not be silently lost if the live wiki
 # page's link set no longer references it.
