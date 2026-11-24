@@ -38,6 +38,10 @@ genizah.{$PUBLIC_DOMAIN} {
 }
 
 # Marmot data catalog (deploy/marmot/README.md)
+grafana.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy grafana:3000
+}
 catalog.{$PUBLIC_DOMAIN} {
 	encode zstd gzip
 	reverse_proxy marmot:8080

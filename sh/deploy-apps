@@ -29,7 +29,7 @@ for arg in "$@"; do
 done
 HOST="${HOST:-administrator@108.181.191.55}"
 OVERRIDE=docker-compose.appsbox.yml
-APP_SERVICES=(apps-postgres birddog-web mathesar jupyterhub tooljet saltcorn marmot caddy)
+APP_SERVICES=(apps-postgres birddog-web mathesar jupyterhub tooljet saltcorn marmot grafana caddy)
 
 # Generated here when missing: secrets only this box uses. "require": the
 # value has to equal the data box's (the role passwords are set there, and
@@ -51,6 +51,7 @@ SALTCORN_DB_PASSWORD hex24
 SALTCORN_SESSION_SECRET hex32
 MARMOT_DB_PASSWORD hex24
 MARMOT_ENCRYPTION_KEY b64_32
+GRAFANA_ADMIN_PASSWORD hex16
 BIRDDOG_SECRET_KEY hex32
 BIRDDOG_SYNC_AIRFLOW_PASSWORD hex24
 BIRDDOG_UI_DB_PASSWORD require

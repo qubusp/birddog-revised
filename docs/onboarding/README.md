@@ -56,6 +56,7 @@ and reached through an SSH tunnel.
 | `jupyterhub` | `birddog-jupyterhub:local` | `hub.` | 8001 | shared notebooks, per-user containers as `birddog_reader` |
 | `tooljet` | tooljet-ce:v3.20.256-lts | `apps.` | 8082 | low-code curator app |
 | `saltcorn` | saltcorn/saltcorn:1.6.4 | `saltcorn.` | 8083 | low-code curator app |
+| `grafana` (apps box) | grafana/grafana-oss:13.0.2 | `grafana.` | 8086 | maps and dashboards, read-only as `birddog_reader` (`deploy/grafana/`) |
 
 The `birddog` database has four schemas of ours: `raw` (data as received), `core`
 (cleaned records, the system of record), `app` (web app state) and `views` (curator

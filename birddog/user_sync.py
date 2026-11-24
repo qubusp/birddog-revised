@@ -1,5 +1,5 @@
 """Copies Birddog accounts (app.user_account) into the other tools: Airflow,
-Mathesar, Marmot, Saltcorn and ToolJet.
+Mathesar, Marmot, Saltcorn, ToolJet and Grafana.
 
 Birddog is the one place accounts are made. Whenever birddog-web or the
 user_admin CLI sees an account's plain password (creation, login, password
@@ -417,7 +417,70 @@ class ToolJet:
                           json={}), "ToolJet archive")
 
 
-TOOL_CLASSES = (Airflow, Mathesar, Marmot, Saltcorn, ToolJet)
+class Grafana:
+    """Grafana's admin HTTP API, as the built-in admin (basic auth).
+
+    Birddog admins are org Admins, everyone else Viewer: dashboards come from
+    the repo (deploy/grafana/dashboards), so nobody needs to edit them there.
+    """
+    key = "grafana"
+    ROLES = {"admin": "Admin", "user": "Viewer"}
+
+    def __init__(self, env):
+        self.base = (env.get("BIRDDOG_SYNC_GRAFANA_URL") or "").rstrip("/")
+        self.admin = env.get("GRAFANA_ADMIN_USER") or "admin"
+        self.admin_password = env.get("GRAFANA_ADMIN_PASSWORD")
+
+    @property
+    def configured(self):
+        return bool(self.base and self.admin_password)
+
+    def _session(self):
+        s = requests.Session()
+        s.auth = (self.admin, self.admin_password)
+        return s
+
+    def _find(self, s, email):
+        resp = s.get(f"{self.base}/api/users/lookup", params={"loginOrEmail": email}, timeout=_TIMEOUT)
+        if resp.status_code == 404:
+            return None
+        return _check(resp, "Grafana lookup").json()
+
+    def upsert(self, account, password):
+        if account.email == self.admin:
+            raise SyncError("Grafana: this email is the break-glass admin's login")
+        s = self._session()
+        user = self._find(s, account.email)
+        name = account.name or account.email
+        if user is None:
+            if not password:
+                return "no account yet (made at next login)"
+            resp = _check(s.post(f"{self.base}/api/admin/users", timeout=_TIMEOUT, json={
+                "name": name, "email": account.email, "login": account.email, "password": password}),
+                "Grafana create")
+            user_id, result = resp.json()["id"], "created"
+        else:
+            user_id, result = user["id"], "updated"
+            if user.get("isDisabled"):
+                _check(s.post(f"{self.base}/api/admin/users/{user_id}/enable", timeout=_TIMEOUT), "Grafana enable")
+            if user.get("name") != name:
+                _check(s.put(f"{self.base}/api/users/{user_id}", timeout=_TIMEOUT, json={
+                    "name": name, "email": account.email, "login": account.email}), "Grafana update")
+            if password:
+                _check(s.put(f"{self.base}/api/admin/users/{user_id}/password", timeout=_TIMEOUT,
+                             json={"password": password}), "Grafana password")
+        _check(s.patch(f"{self.base}/api/org/users/{user_id}", timeout=_TIMEOUT,
+                       json={"role": self.ROLES[account.role]}), "Grafana role")
+        return result
+
+    def remove(self, email):
+        s = self._session()
+        user = self._find(s, email)
+        if user:
+            _check(s.delete(f"{self.base}/api/admin/users/{user['id']}", timeout=_TIMEOUT), "Grafana delete")
+
+
+TOOL_CLASSES = (Airflow, Mathesar, Marmot, Saltcorn, ToolJet, Grafana)
 
 
 def configured_tools(env=None):

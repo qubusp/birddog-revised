@@ -26,6 +26,7 @@ with the Birddog email as username and the same password:
 | Mathesar | JSON-RPC as the Mathesar admin; adds the person as a `birddog_ui` collaborator on the birddog database | `MATHESAR_ADMIN_USER`, `MATHESAR_ADMIN_PASSWORD` |
 | Marmot | REST API with the API key of the service account `birddog-sync` (admin role) | `BIRDDOG_SYNC_MARMOT_API_KEY` |
 | Saltcorn | its `users` table directly (bcrypt hash, role 1 admin / 80 user) | `SALTCORN_DB_PASSWORD` |
+| Grafana | admin HTTP API as the built-in `admin`; Birddog admin → Admin, user → Viewer | `GRAFANA_ADMIN_PASSWORD` (made by `sh/deploy-apps`) |
 | JupyterHub | nothing copied: the hub checks logins against `/login` | `BIRDDOG_LOGIN_URL` (compose) |
 | ToolJet | web API as the workspace admin `birddog-sync@birddog.invalid` (invite, then account setup with the tokens from the user list); password changes write `users.password_digest` (bcrypt) since CE has no API for it; Birddog admin → admin, user → end-user | `BIRDDOG_SYNC_TOOLJET_EMAIL`, `BIRDDOG_SYNC_TOOLJET_PASSWORD`, `TOOLJET_DB_PASSWORD` |
 
@@ -34,7 +35,7 @@ in a tool at the person's next Birddog or Genizah sign-in after it was made,
 or straight away when made with `user_admin add`. Each tool's own break-glass
 admin (`admin`) is never touched. `app.user_sync` records the last result per
 tool; Genizah shows it. `user_admin remove` deletes the Airflow and Mathesar
-users and deactivates the Marmot and Saltcorn ones and archives the ToolJet one.
+users and deactivates the Marmot and Saltcorn ones archives the ToolJet one and deletes the Grafana one.
 
 | App action | DAG (`dags/yaml/app.yml`) | Task code |
 |---|---|---|
