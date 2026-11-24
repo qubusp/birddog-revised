@@ -28,6 +28,7 @@ nonempty() { [ -f .env ] && grep -q "^$1=." .env; }
 gen() {
     case $1 in
         hex*)      openssl rand -hex "${1#hex}" ;;
+        b64_*)     openssl rand -base64 "${1#b64_}" ;;
         fernet)    openssl rand -base64 32 | tr '+/' '-_' ;;
         literal:*) printf '%s\n' "${1#literal:}" ;;
         blank)     echo ;;

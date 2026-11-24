@@ -62,6 +62,50 @@ services:
       apps-postgres: {condition: service_healthy}
     environment:
       PGHOST: apps-postgres
+  # Marmot data catalog (catalog.<PUBLIC_DOMAIN>; deploy/marmot/README.md).
+  # Its own database lives in apps-postgres; it reads Birddog data on the data
+  # box as the read-only birddog_reader (set up in its UI as a pipeline).
+  marmot-db-init:
+    image: postgres:16
+    restart: "no"
+    mem_limit: 64m
+    depends_on:
+      apps-postgres: {condition: service_healthy}
+    environment:
+      PGHOST: apps-postgres
+      PGUSER: postgres
+      PGPASSWORD: ${APPS_POSTGRES_PASSWORD}
+      MARMOT_DB_PASSWORD: ${MARMOT_DB_PASSWORD}
+    command:
+      - bash
+      - -ec
+      - |
+        psql -v ON_ERROR_STOP=1 -q -v pw="$$MARMOT_DB_PASSWORD" <<'SQL'
+        SELECT 'CREATE ROLE marmot LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE'
+        WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'marmot') \gexec
+        ALTER ROLE marmot PASSWORD :'pw';
+        SELECT 'CREATE DATABASE marmot OWNER marmot'
+        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'marmot') \gexec
+        REVOKE CONNECT ON DATABASE marmot FROM PUBLIC;
+        SQL
+  marmot:
+    <<: *databox-hosts
+    image: ghcr.io/marmotdata/marmot:0.14.0
+    command: ["run"]
+    restart: unless-stopped
+    mem_limit: 512m
+    depends_on:
+      marmot-db-init: {condition: service_completed_successfully}
+    environment:
+      MARMOT_DATABASE_HOST: apps-postgres
+      MARMOT_DATABASE_PORT: "5432"
+      MARMOT_DATABASE_NAME: marmot
+      MARMOT_DATABASE_USER: marmot
+      MARMOT_DATABASE_PASSWORD: ${MARMOT_DB_PASSWORD}
+      MARMOT_SERVER_ENCRYPTION_KEY: ${MARMOT_ENCRYPTION_KEY}
+      MARMOT_SERVER_ROOT_URL: https://catalog.${PUBLIC_DOMAIN}
+    ports:
+      - "127.0.0.1:8085:8080"
   birddog-web:
     <<: *databox-hosts
     depends_on: !reset []
