@@ -8,6 +8,7 @@ locally `127.0.0.1:8085` (tunnel: `ssh -N -L 8085:127.0.0.1:8085 administrator@1
 |---|---|
 | Services | `marmot-db-init` (one-shot: role and database `marmot` in `apps-postgres`), `marmot` (`ghcr.io/marmotdata/marmot:0.14.0`, 512m), both in `docker-compose.appsbox.yml` |
 | Secrets | `MARMOT_DB_PASSWORD`, `MARMOT_ENCRYPTION_KEY` in the apps box's `deploy/.env`, made by `sh/deploy-apps`. **Never rotate `MARMOT_ENCRYPTION_KEY`**: stored pipeline credentials are encrypted with it. |
+| MCP | `https://catalog.<PUBLIC_DOMAIN>/api/v1/mcp`. Local clients (Claude Code) use an API key header. Hosted clients (the claude.ai connector) sign in with OAuth and register themselves, which Marmot allows only for hosts in `MARMOT_AUTH_DCR_ALLOWED_REDIRECT_HOSTS` (set to `claude.ai` in the compose file). Users revoke clients under **Account → Connected apps**. |
 | Login | Marmot's own users. The first start creates `admin` / `admin` and forces a password change; it was changed on 2026-11-24 (LOGINS.md). On a new box, change it over the tunnel before the Caddy route is reachable. |
 
 ## What feeds it

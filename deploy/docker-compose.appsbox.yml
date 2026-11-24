@@ -104,11 +104,17 @@ services:
       MARMOT_DATABASE_PASSWORD: ${MARMOT_DB_PASSWORD}
       MARMOT_SERVER_ENCRYPTION_KEY: ${MARMOT_ENCRYPTION_KEY}
       MARMOT_SERVER_ROOT_URL: https://catalog.${PUBLIC_DOMAIN}
+      # Lets claude.ai's MCP connector register itself (OAuth DCR); without it
+      # Marmot only accepts loopback redirect URIs. Comma-separated hosts.
+      MARMOT_AUTH_DCR_ALLOWED_REDIRECT_HOSTS: claude.ai
     ports:
       - "127.0.0.1:8085:8080"
   birddog-web:
     <<: *databox-hosts
     depends_on: !reset []
+    environment:
+      # Airflow's UI is on the data box's domain (Genizah's Airflow link)
+      GENIZAH_AIRFLOW_DOMAIN: ${DATABOX_PUBLIC_DOMAIN:-204-12-218-112.sslip.io}
   caddy:
     depends_on: !reset []
     volumes: !override
