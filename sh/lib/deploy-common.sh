@@ -41,6 +41,7 @@ RSYNC_EXCLUDES=(
     --exclude=/notebooks
     --exclude=/research
     --exclude=/archive
+    --exclude=/LOGINS.md        # local credentials sheet: copied to the boxes by hand, never synced or deleted
     --exclude=/var
     --exclude=/excel
     --exclude=/static/downloads
