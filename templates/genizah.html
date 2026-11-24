@@ -18,6 +18,7 @@
     </a>
     {% if user %}
     <div class="gz-account">
+      <a class="btn btn-sm btn-primary" href="/help"><i class="bi bi-question-circle" aria-hidden="true"></i> Help</a>
       <span class="text-muted small d-none d-sm-inline">{{ user.name or user.email }}</span>
       <a class="btn btn-sm btn-outline-secondary" href="/logout">Sign out</a>
     </div>

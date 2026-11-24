@@ -1,0 +1,210 @@
+<!-- templates/users.html: admin page for Birddog accounts (birddog/user_admin.py) -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Users - Birddog</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+{% include '_assets.html' %}
+</head>
+<body class="bd-standalone">
+{% set page_kind = 'Admin' %}
+{% include '_page_bar.html' %}
+
+<main class="container bd-page">
+  <h1>Users</h1>
+  <p class="text-muted bd-users-lede">An account made here works in every tool on <a href="{{ genizah_url }}">Genizah</a> with the same email and password{% if tools %} ({{ tools | join(', ') }}, plus JupyterHub){% endif %}.</p>
+
+  <section class="card bd-users-add" aria-labelledby="add-heading">
+    <div class="card-body">
+      <h2 id="add-heading" class="h5 mb-3">Add a person</h2>
+      <form id="add-form" class="row g-3 align-items-end" novalidate>
+        <div class="col-md-4">
+          <label for="add-name" class="form-label">Name</label>
+          <input id="add-name" name="name" class="form-control" autocomplete="off" required>
+        </div>
+        <div class="col-md-4">
+          <label for="add-email" class="form-label">Email</label>
+          <input id="add-email" name="email" type="email" class="form-control" autocomplete="off" required>
+        </div>
+        <div class="col-md-2">
+          <div class="form-check mb-2">
+            <input id="add-admin" name="admin" type="checkbox" class="form-check-input">
+            <label for="add-admin" class="form-check-label">Admin</label>
+          </div>
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-primary w-100">Create account</button>
+        </div>
+      </form>
+      <div id="add-error" class="text-danger small mt-2" role="alert" hidden></div>
+    </div>
+  </section>
+
+  <section id="result" class="card bd-users-result" aria-live="polite" hidden>
+    <div class="card-body">
+      <h2 class="h5" id="result-title"></h2>
+      <p class="mb-2">Password, shown only now:</p>
+      <div class="input-group bd-users-password">
+        <input id="result-password" class="form-control font-monospace" readonly aria-label="New password">
+        <button class="btn btn-outline-secondary" type="button" id="copy-password"><i class="bi bi-clipboard" aria-hidden="true"></i> Copy</button>
+      </div>
+      <details class="mt-3">
+        <summary>Message to send them</summary>
+        <textarea id="result-message" class="form-control mt-2" rows="6" readonly aria-label="Message to send"></textarea>
+        <button class="btn btn-sm btn-outline-secondary mt-2" type="button" id="copy-message"><i class="bi bi-clipboard" aria-hidden="true"></i> Copy message</button>
+      </details>
+      <ul class="bd-users-sync mt-3" id="result-sync" aria-label="Accounts in the other tools"></ul>
+      <button type="button" class="btn btn-sm btn-link px-0" onclick="location.reload()">Done, refresh the list</button>
+    </div>
+  </section>
+
+  <h2 class="h5 mt-4">Everyone ({{ accounts | length }})</h2>
+  <div class="table-responsive">
+    <table class="table align-middle bd-users-table">
+      <thead>
+        <tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Other tools</th><th scope="col">Added</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+      </thead>
+      <tbody>
+        {% for a in accounts %}
+        <tr data-email="{{ a.email }}">
+          <td>{{ a.name }}{% if a.email == me %} <span class="badge text-bg-light">you</span>{% endif %}</td>
+          <td>{{ a.email }}</td>
+          <td>
+            {% if a.email == me %}{{ a.role }}{% else %}
+            <select class="form-select form-select-sm bd-users-role" aria-label="Role of {{ a.name }}">
+              <option value="user" {{ 'selected' if a.role == 'user' }}>user</option>
+              <option value="admin" {{ 'selected' if a.role == 'admin' }}>admin</option>
+            </select>{% endif %}
+          </td>
+          <td class="bd-users-tools">
+            {% for t in tools %}
+              {% set s = a.sync.get(t) %}
+              {% if s and s.state == 'ok' %}<span class="bd-tool-ok" title="{{ t }}: in sync"><i class="bi bi-check-circle" aria-hidden="true"></i> {{ t }}</span>
+              {% elif s %}<span class="bd-tool-error" title="{{ t }}: {{ s.detail }}"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> {{ t }}</span>
+              {% else %}<span class="bd-tool-pending" title="{{ t }}: made at their next sign-in"><i class="bi bi-hourglass-split" aria-hidden="true"></i> {{ t }}</span>{% endif %}
+            {% endfor %}
+          </td>
+          <td class="text-nowrap text-muted">{{ a.created_at.strftime('%Y-%m-%d') if a.created_at else '' }}</td>
+          <td class="text-nowrap text-end">
+            <button type="button" class="btn btn-sm btn-outline-secondary bd-users-password-btn">New password</button>
+            {% if a.email != me %}<button type="button" class="btn btn-sm btn-outline-danger bd-users-remove-btn">Remove</button>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="small text-muted">Hover a tool for details. A tool with an hourglass gets the account at the person's next sign-in to Birddog or Genizah, since that's when the password is known.</p>
+  <div id="toast" class="bd-users-toast" role="status" aria-live="polite" hidden></div>
+</main>
+
+<script>
+(() => {
+  const genizahUrl = {{ genizah_url | tojson }};
+  const $ = (id) => document.getElementById(id);
+  const icons = {ok: 'check-circle', error: 'exclamation-triangle'};
+
+  async function call(method, url, body) {
+    const response = await fetch(url, {
+      method, headers: {'Content-Type': 'application/json'},
+      body: body ? JSON.stringify(body) : undefined,
+    }).catch(() => null);
+    const data = response ? await response.json().catch(() => ({})) : {};
+    if (!response || !response.ok || !data.success) {
+      throw new Error(data.message || data.error || 'Something went wrong. Try again.');
+    }
+    return data;
+  }
+
+  function toast(text, isError) {
+    const el = $('toast');
+    el.textContent = text;
+    el.classList.toggle('is-error', !!isError);
+    el.hidden = false;
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => { el.hidden = true; }, 6000);
+  }
+
+  function showResult(title, name, email, data) {
+    $('result-title').textContent = title;
+    $('result-password').value = data.password;
+    $('result-message').value =
+      `Hello ${name},\n\nYou have an account on Genizah, the portal for our Jewish genealogy and ` +
+      `documentation tools:\n${genizahUrl}\n\nEmail: ${email}\nPassword: ${data.password}\n\n` +
+      `The same email and password work in every tool listed there. You can change the ` +
+      `password in Birddog under Profile.`;
+    $('result-sync').innerHTML = '';
+    for (const row of data.sync) {
+      const li = document.createElement('li');
+      li.className = row.state === 'ok' ? 'bd-tool-ok' : 'bd-tool-error';
+      li.innerHTML = `<i class="bi bi-${icons[row.state] || 'dot'}" aria-hidden="true"></i> `;
+      li.append(`${row.tool}: ${row.state === 'ok' ? (row.detail || 'ok') : row.detail}`);
+      $('result-sync').append(li);
+    }
+    $('result').hidden = false;
+    $('result').scrollIntoView({behavior: 'smooth', block: 'start'});
+  }
+
+  async function copy(text, button) {
+    await navigator.clipboard.writeText(text);
+    const label = button.innerHTML;
+    button.textContent = 'Copied';
+    setTimeout(() => { button.innerHTML = label; }, 1500);
+  }
+  $('copy-password').addEventListener('click', (e) => copy($('result-password').value, e.currentTarget));
+  $('copy-message').addEventListener('click', (e) => copy($('result-message').value, e.currentTarget));
+
+  $('add-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.target, button = form.querySelector('button[type=submit]');
+    $('add-error').hidden = true;
+    button.disabled = true;
+    button.textContent = 'Creating… (setting up every tool)';
+    const body = {name: form.name.value.trim(), email: form.email.value.trim(), admin: form.admin.checked};
+    try {
+      const data = await call('POST', '/users', body);
+      showResult(`Account created for ${body.name}`, body.name, body.email.toLowerCase(), data);
+      form.reset();
+    } catch (err) {
+      $('add-error').textContent = err.message;
+      $('add-error').hidden = false;
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Create account';
+    }
+  });
+
+  document.querySelectorAll('.bd-users-table tbody tr').forEach((row) => {
+    const email = row.dataset.email, name = row.cells[0].firstChild.textContent.trim();
+    const url = `/users/${encodeURIComponent(email)}`;
+    row.querySelector('.bd-users-password-btn').addEventListener('click', async (e) => {
+      if (!confirm(`Give ${name} a new password? Their old one stops working in every tool.`)) return;
+      e.currentTarget.disabled = true;
+      try { showResult(`New password for ${name}`, name, email, await call('POST', `${url}/password`)); }
+      catch (err) { toast(err.message, true); }
+      finally { e.currentTarget.disabled = false; }
+    });
+    const role = row.querySelector('.bd-users-role');
+    if (role) role.addEventListener('change', async () => {
+      role.disabled = true;
+      try {
+        const data = await call('POST', `${url}/role`, {role: role.value});
+        const failed = data.sync.filter((r) => r.state !== 'ok').map((r) => r.tool);
+        toast(`${name} is now ${role.value}` + (failed.length ? ` (not updated in: ${failed.join(', ')})` : ''), failed.length > 0);
+      } catch (err) { toast(err.message, true); role.value = role.value === 'admin' ? 'user' : 'admin'; }
+      finally { role.disabled = false; }
+    });
+    const remove = row.querySelector('.bd-users-remove-btn');
+    if (remove) remove.addEventListener('click', async () => {
+      if (!confirm(`Remove ${name} (${email})? Their account, watchlists and preferences are deleted, and they lose access to every tool.`)) return;
+      remove.disabled = true;
+      try { await call('DELETE', url); row.remove(); toast(`${name} was removed`); }
+      catch (err) { toast(err.message, true); remove.disabled = false; }
+    });
+  });
+})();
+</script>
+</body>
+</html>

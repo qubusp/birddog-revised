@@ -103,5 +103,11 @@ def tool_url(key, host):
     return next(_url(tool, host) for tool in TOOLS if tool.key == key)
 
 
+def portal_url(host):
+    """Genizah's own address, for links from the Birddog host."""
+    domain = os.environ.get("GENIZAH_DOMAIN") or _domain_from_host(host)
+    return f"https://genizah.{domain}/"
+
+
 def is_genizah_host(host):
     return (host or "").lower().startswith("genizah.")

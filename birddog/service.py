@@ -34,6 +34,7 @@ from birddog import pg
 from birddog import catalog
 from birddog import genizah
 from birddog import user_sync
+from birddog import user_admin
 from birddog.core import page_history
 from birddog.env import mode_mismatch
 from birddog.excel import list_templates, list_column_classes, default_column_header_map
@@ -205,6 +206,24 @@ def genizah_home():
         tools=genizah.tools_for(user.role, request.host, sync_status) if user else [],
         birddog_url=genizah.tool_url('birddog', request.host),
         runtime_state=runtime.state)
+
+
+# Genizah's help page: what each tool is for and where it is
+# (templates/genizah_help.html). Genizah host only, signed-in users only.
+@app.route('/help', methods=['GET'])
+def genizah_help():
+    if not genizah.is_genizah_host(request.host):
+        return jsonify({'error': 'Not found'}), 404
+    user_session = session.get('user')
+    user = users.lookup(user_session['email']) if user_session and user_session.get('email') else None
+    if user is None:
+        return redirect('/')
+    return render_template(
+        'genizah_help.html',
+        user={'name': user.name, 'email': user.email, 'role': user.role},
+        tools=genizah.tools_for(user.role, request.host),
+        genizah_url=genizah.portal_url(request.host),
+        birddog_url=genizah.tool_url('birddog', request.host))
 
 
 # Home Route (Shows the landing page)
@@ -1011,6 +1030,72 @@ def logs_view(user):
     return render_template("logs.html")
 
 # ---- SERVICE LOG ACCESS ---------------------------------------------------------------
+
+# ---- USERS (admin) ------------------------------------------------------------
+# Accounts are made here or with `python -m birddog.user_admin`; both go through
+# user_admin's functions, which also copy the account into the other tools.
+
+def _sync_rows(results):
+    return [{"tool": t, "state": st, "detail": d} for t, (st, d) in sorted(results.items())]
+
+
+@app.route("/users", methods=['GET'])
+@admin_required
+def users_page(user):
+    if not pg.enabled():
+        return "The Users page needs the Postgres stack (BIRDDOG_DATABASE_URL).", 501
+    return render_template("users.html", accounts=user_admin.accounts(), me=user.email,
+                           tools=[t.key for t in user_sync.configured_tools()],
+                           genizah_url=genizah.portal_url(request.host))
+
+
+def _account_call(fn, *args):
+    try:
+        return fn(*args), None
+    except user_admin.AccountError as err:
+        return None, (jsonify(success=False, message=str(err)), 400)
+
+
+@app.route("/users", methods=['POST'])
+@admin_required
+def users_create(user):
+    data = request.get_json() or {}
+    result, error = _account_call(user_admin.create_account, data.get("email"), data.get("name"),
+                                  bool(data.get("admin")))
+    if error:
+        return error
+    password, results = result
+    _logger.info(f"Account created by admin: {_hide(data.get('email', ''))}")
+    return jsonify(success=True, password=password, sync=_sync_rows(results))
+
+
+@app.route("/users/<path:email>/password", methods=['POST'])
+@admin_required
+def users_new_password(user, email):
+    result, error = _account_call(user_admin.new_password, email)
+    if error:
+        return error
+    password, results = result
+    return jsonify(success=True, password=password, sync=_sync_rows(results))
+
+
+@app.route("/users/<path:email>/role", methods=['POST'])
+@admin_required
+def users_role(user, email):
+    if email.strip().lower() == user.email:
+        return jsonify(success=False, message="You can't change your own role"), 400
+    result, error = _account_call(user_admin.change_role, email, (request.get_json() or {}).get("role"))
+    return error or jsonify(success=True, sync=_sync_rows(result))
+
+
+@app.route("/users/<path:email>", methods=['DELETE'])
+@admin_required
+def users_delete(user, email):
+    if email.strip().lower() == user.email:
+        return jsonify(success=False, message="You can't remove your own account"), 400
+    result, error = _account_call(user_admin.delete_account, email)
+    return error or jsonify(success=True, sync=_sync_rows(result))
+
 
 @app.route("/service_usage", methods=['GET'])
 @admin_required

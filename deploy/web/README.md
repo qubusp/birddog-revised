@@ -15,9 +15,11 @@ there separately from `birddog.`. Tool links are built from `GENIZAH_DOMAIN`
 setup: `DATABOX_PUBLIC_DOMAIN` in the apps box's `.env`). Airflow is shown to
 admins only.
 
-**Accounts in the other tools.** Birddog is where accounts are made (`python
--m birddog.user_admin add|password|role|remove|sync|list`, run in this
-container). `birddog/user_sync.py` copies each account into the other tools,
+**Accounts in the other tools.** Birddog is where accounts are made: on the
+admin **Users** page (`/users`: add a person, new password, role, remove;
+the generated password is shown once, with a message to send them) or with
+`python -m birddog.user_admin add|password|role|remove|sync|list` in this
+container. Both use the same functions in `birddog/user_admin.py`. `birddog/user_sync.py` copies each account into the other tools,
 with the Birddog email as username and the same password:
 
 | Tool | How | Settings (in `deploy/.env` unless noted) |
@@ -26,7 +28,7 @@ with the Birddog email as username and the same password:
 | Mathesar | JSON-RPC as the Mathesar admin; adds the person as a `birddog_ui` collaborator on the birddog database | `MATHESAR_ADMIN_USER`, `MATHESAR_ADMIN_PASSWORD` |
 | Marmot | REST API with the API key of the service account `birddog-sync` (admin role) | `BIRDDOG_SYNC_MARMOT_API_KEY` |
 | Saltcorn | its `users` table directly (bcrypt hash, role 1 admin / 80 user) | `SALTCORN_DB_PASSWORD` |
-| Grafana | admin HTTP API as the built-in `admin`; Birddog admin → Admin, user → Viewer | `GRAFANA_ADMIN_PASSWORD` (made by `sh/deploy-apps`) |
+| Grafana | admin HTTP API as the built-in `admin`; Birddog admin → Admin and server admin, user → Viewer | `GRAFANA_ADMIN_PASSWORD` (made by `sh/deploy-apps`) |
 | JupyterHub | nothing copied: the hub checks logins against `/login` | `BIRDDOG_LOGIN_URL` (compose) |
 | ToolJet | web API as the workspace admin `birddog-sync@birddog.invalid` (invite, then account setup with the tokens from the user list); password changes write `users.password_digest` (bcrypt) since CE has no API for it; Birddog admin → admin, user → end-user | `BIRDDOG_SYNC_TOOLJET_EMAIL`, `BIRDDOG_SYNC_TOOLJET_PASSWORD`, `TOOLJET_DB_PASSWORD` |
 

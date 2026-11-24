@@ -101,7 +101,7 @@
     <h2 id="flow" class="h3">How it fits together</h2>
     <ol>
       <li><b>The archives publish scans</b> on uk.wikisource.org and Wikimedia Commons.</li>
-      <li><b>Pipelines copy them into the catalog</b> every hour: pages, files, their metadata and changes (run by Airflow).</li>
+      <li><b>Pipelines copy them into the catalog</b> every night: pages, files, their metadata and changes (run by Airflow).</li>
       <li><b>Claude reads the scanned books</b> page by page: places, and soon the full text and each register entry. Big books wait for an admin's approval first.</li>
       <li><b>People check and correct</b> what was found, in Mathesar or the review notebook.</li>
       <li><b>Everyone uses the results</b>: search and alerts in Birddog, maps in Grafana, analysis in JupyterHub, and the map of where each value came from in Marmot.</li>
@@ -121,7 +121,7 @@
 
   <section class="mb-5" aria-labelledby="contact">
     <h2 id="contact" class="h3">Need help?</h2>
-    <p>Write to [contact name, email]. For a new account or a password reset, ask an admin.</p>
+    <p>For a new account, a password reset or any question about the tools, ask an admin.</p>
   </section>
 </main>
 

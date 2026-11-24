@@ -81,3 +81,18 @@ def test_cards_show_account_state(client, monkeypatch):
     assert "Account sync failed" in body                      # marmot
     assert "at least 8 characters" in body                    # its detail, as a tooltip
     assert "Account not set up yet" in body                   # saltcorn: no row
+
+
+def test_help_page_is_for_signed_in_users_on_the_genizah_host(client):
+    assert client.get("/help", base_url=f"https://{GENIZAH}").status_code == 302      # signed out
+    assert client.get("/help", base_url="https://birddog.example.org").status_code == 404
+    _sign_in(client, "user")
+    with patch("birddog.service.render_template", return_value="HELP") as render:
+        assert client.get("/help", base_url=f"https://{GENIZAH}").get_data(as_text=True) == "HELP"
+    assert render.call_args.args[0] == "genizah_help.html"
+    assert "airflow" not in [t["key"] for t in render.call_args.kwargs["tools"]]
+
+
+def test_signed_in_genizah_has_a_help_button(client):
+    _sign_in(client, "user")
+    assert 'href="/help"' in client.get("/", base_url=f"https://{GENIZAH}").get_data(as_text=True)
