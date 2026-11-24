@@ -1,0 +1,129 @@
+<!-- templates/genizah_help.html: "what is where, and what for" help for Genizah.
+     Context: `tools` (genizah.tools_for(...): key, name, url, summary, use_for,
+     icon, login, admin_only) and `user`, as the Genizah page gets them. -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Genizah help: what is where</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+{% include '_assets.html' %}
+</head>
+<body class="bd-standalone gz-page">
+
+<header class="bd-page-bar">
+  <div class="container gz-bar">
+    <a class="bd-brand" href="/">
+      <span class="gz-mark" aria-hidden="true"><i class="bi bi-archive"></i></span>
+      <span class="bd-brand-name">Genizah</span>
+    </a>
+    {% if user %}
+    <div class="gz-account">
+      <a class="btn btn-sm btn-outline-secondary" href="/"><i class="bi bi-arrow-left" aria-hidden="true"></i> Genizah</a>
+      <span class="text-muted small d-none d-sm-inline">{{ user.name or user.email }}</span>
+      <a class="btn btn-sm btn-outline-secondary" href="/logout">Sign out</a>
+    </div>
+    {% endif %}
+  </div>
+</header>
+
+{% set urls = {} %}
+{% for t in tools %}{% set _ = urls.update({t.key: t.url}) %}{% endfor %}
+{% macro tool_link(key, label) -%}
+  {%- if urls.get(key) -%}<a href="{{ urls[key] }}" target="_blank" rel="noopener">{{ label }}</a>{%- else -%}{{ label }}{%- endif -%}
+{%- endmacro %}
+
+<main class="container gz-main">
+  <section class="gz-intro">
+    <h1 class="gz-title">Help: what is where</h1>
+    <p class="gz-lede">Genizah gathers every tool for finding, cataloguing and studying records from Ukrainian archives. This page says which tool to open for which job, and how they fit together.</p>
+  </section>
+
+  <section class="mb-5" aria-labelledby="start">
+    <h2 id="start" class="h3">Start here</h2>
+    <ol class="fs-5">
+      <li><b>Sign in once, with your Birddog account.</b> Accounts are by invitation; ask an admin for one. The same email and password work in every tool below.</li>
+      <li><b>Pick the tool for your task</b> from the table below, or from the cards on the Genizah page.</li>
+      <li><b>Change your password in Birddog</b> ({{ tool_link('birddog', 'Birddog') }} → Profile → Change password). The new password is copied to the other tools for you.</li>
+    </ol>
+  </section>
+
+  <section class="mb-5" aria-labelledby="tasks">
+    <h2 id="tasks" class="h3">Which tool for which job</h2>
+    <div class="table-responsive" tabindex="0" role="region" aria-label="Tasks and tools">
+    <table class="table align-middle">
+      <thead><tr><th scope="col">I want to…</th><th scope="col">Open</th><th scope="col">Where exactly</th></tr></thead>
+      <tbody>
+        <tr><td>Find an archive, fond or file, or search the catalog</td><td>{{ tool_link('birddog', 'Birddog') }}</td><td>Browse and Search tabs</td></tr>
+        <tr><td>Be told when an archive I research changes on the wiki</td><td>{{ tool_link('birddog', 'Birddog') }}</td><td>Watchlists tab → Add Archive; changes appear under Alerts</td></tr>
+        <tr><td>Look up or correct a record (document type, place, status)</td><td>{{ tool_link('mathesar', 'Mathesar') }}</td><td>Schema <code>core</code> to edit; schema <code>views</code> for ready-made, read-only lists</td></tr>
+        <tr><td>Check the places Claude found in a book, against the scan</td><td>{{ tool_link('mathesar', 'Mathesar') }} or {{ tool_link('jupyterhub', 'JupyterHub') }}</td><td><code>views.books__places</code> and <code>views.books__place_mentions</code> (each with a link to the page); or the notebook <code>examples/book_places_review.ipynb</code> to mark places right or wrong</td></tr>
+        <tr><td>Approve a large book for reading</td><td>{{ tool_link('mathesar', 'Mathesar') }}</td><td><code>views.books__needs_approval</code> lists them; set <code>status</code> to <i>approved</i> or <i>rejected</i> on the same row in <code>core.book_read</code></td></tr>
+        <tr><td>See communities and book places on a map</td><td>{{ tool_link('grafana', 'Grafana') }}</td><td>Dashboards: <i>Archive map</i>, <i>Books map</i></td></tr>
+        <tr><td>See what reading the books costs</td><td>{{ tool_link('grafana', 'Grafana') }} or {{ tool_link('jupyterhub', 'JupyterHub') }}</td><td>Dashboard <i>Book reading: progress and costs</i>; notebook <code>examples/token_costs.ipynb</code></td></tr>
+        <tr><td>See how the collection grows</td><td>{{ tool_link('grafana', 'Grafana') }}</td><td>Dashboard <i>Collection overview</i></td></tr>
+        <tr><td>Analyse records or make an export</td><td>{{ tool_link('jupyterhub', 'JupyterHub') }}</td><td>Start with <code>examples/birddog_quickstart.ipynb</code>; read-only access to all of <code>core</code> and <code>raw</code></td></tr>
+        <tr><td>Use or build a curation screen or form</td><td>{{ tool_link('tooljet', 'ToolJet') }} / {{ tool_link('saltcorn', 'Saltcorn') }}</td><td>ToolJet for curation apps; Saltcorn for simple forms and public views</td></tr>
+        <tr><td>Find which table holds a kind of record, and where it came from</td><td>{{ tool_link('marmot', 'Marmot') }}</td><td>Search a word (e.g. "location"); open a table for its columns and its lineage graph</td></tr>
+        {% if user and user.role == 'admin' %}
+        <tr><td>Check, start or pause a pipeline (admins)</td><td>{{ tool_link('airflow', 'Airflow') }}</td><td>DAGs list; <i>read_books</i> and <i>transcribe_books</i> read the scans with Claude</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section class="mb-5" aria-labelledby="tools">
+    <h2 id="tools" class="h3">The tools</h2>
+    <div class="row g-4">
+      {% for t in tools %}
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-body">
+            <h3 class="h5"><i class="bi bi-{{ t.icon }}" aria-hidden="true"></i> <a href="{{ t.url }}" target="_blank" rel="noopener">{{ t.name }}</a>{% if t.admin_only %} <span class="badge text-bg-secondary">Admins</span>{% endif %}</h3>
+            <p class="mb-2">{{ t.summary }}</p>
+            <p class="mb-2"><b>Use it to:</b> {{ t.use_for }}</p>
+            <p class="small text-muted mb-0">
+              {% if t.login == 'birddog' %}Sign in with your Birddog email and password.
+              {% elif t.login == 'synced' %}Your Birddog account is copied here; sign in with the same email and password.
+              {% else %}Has its own login; ask an admin.{% endif %}
+              Address: <a href="{{ t.url }}" target="_blank" rel="noopener">{{ t.url }}</a>
+            </p>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="mb-5" aria-labelledby="flow">
+    <h2 id="flow" class="h3">How it fits together</h2>
+    <ol>
+      <li><b>The archives publish scans</b> on uk.wikisource.org and Wikimedia Commons.</li>
+      <li><b>Pipelines copy them into the catalog</b> every hour: pages, files, their metadata and changes (run by Airflow).</li>
+      <li><b>Claude reads the scanned books</b> page by page: places, and soon the full text and each register entry. Big books wait for an admin's approval first.</li>
+      <li><b>People check and correct</b> what was found, in Mathesar or the review notebook.</li>
+      <li><b>Everyone uses the results</b>: search and alerts in Birddog, maps in Grafana, analysis in JupyterHub, and the map of where each value came from in Marmot.</li>
+    </ol>
+  </section>
+
+  <section class="mb-5" aria-labelledby="words">
+    <h2 id="words" class="h3">Words used here</h2>
+    <dl class="row">
+      <dt class="col-sm-3">Archive, fond, opus, case</dt><dd class="col-sm-9">The archive's own hierarchy: an archive holds fonds (collections), a fond holds opuses (inventories), an opus lists cases (files).</dd>
+      <dt class="col-sm-3">Page</dt><dd class="col-sm-9">A wiki page describing one level of that hierarchy.</dd>
+      <dt class="col-sm-3">Document, scan, book</dt><dd class="col-sm-9">A file linked from a page, usually a scanned PDF; a multi-page one is a book.</dd>
+      <dt class="col-sm-3">Place match</dt><dd class="col-sm-9">A place name read in a book, linked to a modern location in the catalog's location list.</dd>
+      <dt class="col-sm-3">Mention, quote</dt><dd class="col-sm-9">One place as written on one page, with the few words around it, so you can check it on the scan.</dd>
+    </dl>
+  </section>
+
+  <section class="mb-5" aria-labelledby="contact">
+    <h2 id="contact" class="h3">Need help?</h2>
+    <p>Write to [contact name, email]. For a new account or a password reset, ask an admin.</p>
+  </section>
+</main>
+
+</body>
+</html>
