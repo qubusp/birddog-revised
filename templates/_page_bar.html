@@ -1,0 +1,11 @@
+{# Top bar for the standalone pages (admin dashboards, password reset). Set
+   page_kind before including it to label the page, e.g. "Admin". #}
+<header class="bd-page-bar">
+  <div class="container">
+    <a class="bd-brand" href="/">
+      <img src="{{ url_for('static', filename='birddog.png') }}" alt="" width="40" height="40">
+      <span class="bd-brand-name">Birddog</span>
+    </a>
+    {% if page_kind %}<span class="bd-page-kind">{{ page_kind }}</span>{% endif %}
+  </div>
+</header>
