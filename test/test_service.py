@@ -27,6 +27,7 @@ class _UserStub:
     def __init__(self, name=TEST_NAME, email=TEST_EMAIL):
         self.name = name
         self.email = email
+        self.role = "user"
         self._pw = TEST_PASSWORD
         self._preferences = {}
 

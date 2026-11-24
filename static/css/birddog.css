@@ -883,3 +883,97 @@ body.bd-standalone { padding-top: 0; }
 .tab-pane:not(.active) { display: none !important; }
 .archives-table { min-width: 46rem; }
 .archives-table td { overflow-wrap: anywhere; }
+
+/* ---------------------------------------------------------------- genizah */
+/* templates/genizah.html: the entry page that lists every tool */
+.gz-bar { justify-content: space-between; }
+.gz-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--bd-radius);
+  background: var(--bd-primary);
+  color: #fff;
+  font-size: 1.25rem;
+}
+.gz-account { display: flex; align-items: center; gap: .75rem; }
+.gz-main { padding-bottom: 4rem; }
+.gz-intro { max-width: 40rem; margin-bottom: 2rem; }
+.gz-title {
+  font-family: var(--bd-font-serif);
+  font-weight: 600;
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  letter-spacing: -0.015em;
+  margin-bottom: .25rem;
+}
+.gz-lede { color: var(--bd-ink-muted); font-size: 1.125rem; margin: 0; }
+.gz-page .auth-card { margin-top: 0; margin-left: 0; }
+
+.gz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.gz-tool {
+  position: relative;
+  display: flex;
+  gap: 1rem;
+  height: 100%;
+  padding: 1.25rem;
+  border: 1px solid var(--bd-rule);
+  border-radius: var(--bd-radius);
+  background: var(--bd-surface);
+  color: var(--bd-ink);
+  text-decoration: none;
+  transition: border-color .15s var(--bd-ease), box-shadow .15s var(--bd-ease), transform .15s var(--bd-ease);
+}
+.gz-tool:hover {
+  color: var(--bd-ink);
+  border-color: var(--bd-primary);
+  box-shadow: 0 6px 18px rgba(27, 36, 34, .08);
+  transform: translateY(-1px);
+}
+.gz-tool:focus-visible { outline: 2px solid var(--bd-primary); outline-offset: 2px; }
+.gz-tool-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--bd-radius);
+  background: var(--bd-primary-soft);
+  color: var(--bd-primary);
+  font-size: 1.35rem;
+}
+.gz-tool-body { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+.gz-tool-name { font-weight: 600; font-size: 1.125rem; }
+.gz-tool-summary { color: var(--bd-ink); }
+.gz-tool-use { color: var(--bd-ink-muted); font-size: .9375rem; }
+.gz-tool-host {
+  margin-top: .35rem;
+  color: var(--bd-ink-muted);
+  font-size: .8125rem;
+  overflow-wrap: anywhere;
+}
+.gz-tool-out { position: absolute; top: 1rem; right: 1rem; color: var(--bd-ink-muted); font-size: .875rem; }
+.gz-badge { font-weight: 600; vertical-align: .15em; border: 1px solid var(--bd-rule); }
+.gz-note { margin-top: 1.5rem; }
+@media (prefers-reduced-motion: reduce) {
+  .gz-tool, .gz-tool:hover { transition: none; transform: none; }
+}
+.gz-account-state {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  margin-top: .5rem;
+  font-size: .8125rem;
+  font-weight: 600;
+}
+.gz-account-ok { color: var(--bd-green); }
+.gz-account-pending { color: var(--bd-ochre); }
+.gz-account-error { color: var(--bd-danger); }
+.gz-account-none { color: var(--bd-ink-muted); }

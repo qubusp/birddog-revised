@@ -32,6 +32,8 @@ from birddog.airflow_jobs import AirflowJobs
 from birddog.wiki import canonicalize_title
 from birddog import pg
 from birddog import catalog
+from birddog import genizah
+from birddog import user_sync
 from birddog.core import page_history
 from birddog.env import mode_mismatch
 from birddog.excel import list_templates, list_column_classes, default_column_header_map
@@ -186,9 +188,30 @@ def admin_required(f):
 
 # ---- FRONT END PAGES --------------------------------------------------------
 
+# Genizah: the entry page for every tool (birddog/genizah.py). Same app, own
+# host, so its session cookie is the genizah host's: people sign in there once.
+def genizah_home():
+    user_session = session.get('user')
+    user = users.lookup(user_session['email']) if user_session and user_session.get('email') else None
+    sync_status = {}
+    if user:
+        try:
+            sync_status = user_sync.status(user.email)
+        except Exception as err:   # e.g. migration 018 not applied yet
+            _logger.warning(f"Genizah: no sync status: {err}")
+    return render_template(
+        'genizah.html',
+        user={'name': user.name, 'email': user.email, 'role': user.role} if user else None,
+        tools=genizah.tools_for(user.role, request.host, sync_status) if user else [],
+        birddog_url=genizah.tool_url('birddog', request.host),
+        runtime_state=runtime.state)
+
+
 # Home Route (Shows the landing page)
 @app.route('/', methods=['GET'])
 def home():
+    if genizah.is_genizah_host(request.host):
+        return genizah_home()
     user_session = None
     start_title = None
     hide_insignificant = False
@@ -271,7 +294,10 @@ def login():
     if user:
         session['user'] = {'name': user.name, 'email': user.email}
         _logger.info(f"Login successful: {_hide(email)}")
-        return jsonify({'success': True}), 200
+        # give the other tools this password where they are behind (user_sync.py)
+        user_sync.sync_in_background(user.email, password, only_behind=True)
+        # role: for JupyterHub's authenticator, which checks logins here
+        return jsonify({'success': True, 'role': user.role}), 200
 
     _logger.info(f"Login failed: {_hide(email)}")
     return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
@@ -296,6 +322,7 @@ def change_password(user):
         return jsonify(success=False, message='Current and new passwords are required'), 400
 
     if user.change_password(current_pw, new_pw):
+        user_sync.sync_in_background(user.email, new_pw)
         return jsonify(success=True, message='Password changed successfully'), 200
 
     return jsonify(success=False, message='Current password is incorrect'), 403
@@ -344,6 +371,7 @@ def reset_with_token(token):
             return render_template('reset_password_form.html', token=token, error="Password is required")
 
         user.set_password(new_pw)
+        user_sync.sync_in_background(user.email, new_pw)
         return redirect(url_for('home'))
 
     return render_template('reset_password_form.html', token=token)

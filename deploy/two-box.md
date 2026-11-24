@@ -3,7 +3,7 @@
 | Box | Address | Runs | Public sites |
 |---|---|---|---|
 | Data box | 204.12.218.112 | Postgres, Airflow (api-server, scheduler, dag-processor), backups | `airflow.204-12-218-112.sslip.io` |
-| Apps box | 108.181.191.55 | birddog-web, Mathesar, JupyterHub, ToolJet, Saltcorn, apps-postgres | `birddog.`, `data.`, `hub.`, `apps.`, `saltcorn.` on `108-181-191-55.sslip.io` |
+| Apps box | 108.181.191.55 | birddog-web, Mathesar, JupyterHub, ToolJet, Saltcorn, apps-postgres | `birddog.`, `genizah.`, `data.`, `hub.`, `apps.`, `saltcorn.`, `catalog.` on `108-181-191-55.sslip.io` |
 
 Both boxes use the same `docker-compose.yml`. Each box's `deploy/.env` sets
 `COMPOSE_FILE` to add its own override, so a plain `docker compose up -d` only

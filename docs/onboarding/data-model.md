@@ -62,6 +62,7 @@ Each view is a queue. A DAG or a curator works through the rows it returns.
 | Table | Contents |
 |---|---|
 | `app.user_account` | `email` (PK), `name`, `password_hash` (werkzeug format, kept from S3), `role` (default `user`), timestamps |
+| `app.user_sync` | (018) Where each account stands in the other tools: `(email, tool)` PK, `state` (`ok`/`error`), `detail`, `password_version` (fingerprint of the password hash the tool's copy came from), `synced_at`. Written by `birddog/user_sync.py`, shown on Genizah. |
 | `app.user_preference` | `(email, key)` PK, `value` (jsonb) |
 | `app.watch` | One row per watched archive: `(email, archive_title)` PK, `include[]`, `exclude[]`, `cutoff_date`, `last_checked_date`, `moved_to`, `watcher` (jsonb, 016: the watcher's header, NULL until the first check; its `last_checked_date` is the newest change seen, the column's is the wall-clock check time) |
 | `app.alert_state` | Per-item alert inside a watch: `(email, archive_title, item_title)` PK, `resolved`, `entry` (jsonb: the unresolved entry, `{}` once resolved), `history` (jsonb, 016: resolve history, oldest first), and `modified`, `last_resolved`, `significance` (insignificant, new_page), `sig_span`, which a trigger derives from them (for queries only). A row with neither entry nor history is deleted. FK to `app.watch`. |

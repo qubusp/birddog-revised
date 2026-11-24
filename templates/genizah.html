@@ -1,0 +1,101 @@
+<!-- templates/genizah.html: the entry page for every tool (birddog/genizah.py) -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Genizah</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+{% include '_assets.html' %}
+</head>
+<body class="bd-standalone gz-page">
+
+<header class="bd-page-bar">
+  <div class="container gz-bar">
+    <a class="bd-brand" href="/">
+      <span class="gz-mark" aria-hidden="true"><i class="bi bi-archive"></i></span>
+      <span class="bd-brand-name">Genizah</span>
+    </a>
+    {% if user %}
+    <div class="gz-account">
+      <span class="text-muted small d-none d-sm-inline">{{ user.name or user.email }}</span>
+      <a class="btn btn-sm btn-outline-secondary" href="/logout">Sign out</a>
+    </div>
+    {% endif %}
+  </div>
+</header>
+
+<main class="container gz-main">
+  <section class="gz-intro">
+    <h1 class="gz-title">Genizah</h1>
+    <p class="gz-lede">Every Birddog tool in one place. Sign in with your Birddog account.</p>
+  </section>
+
+  {% if runtime_state != 'running' %}
+  <div class="alert alert-warning" role="status">Birddog is not running right now, so sign-in is unavailable.</div>
+  {% elif not user %}
+  <section class="card auth-card" aria-labelledby="gz-signin-heading">
+    <div class="card-body">
+      <h2 id="gz-signin-heading" class="h4 mb-3">Sign in</h2>
+      <form id="gz-signin" novalidate>
+        <div class="mb-3">
+          <label for="gz-email" class="form-label">Email</label>
+          <input type="email" class="form-control" id="gz-email" name="email" autocomplete="username" required>
+        </div>
+        <div class="mb-3">
+          <label for="gz-password" class="form-label">Password</label>
+          <input type="password" class="form-control" id="gz-password" name="password" autocomplete="current-password" required>
+        </div>
+        <div id="gz-signin-error" class="text-danger small mb-2" role="alert" hidden></div>
+        <button type="submit" class="btn btn-primary w-100">Sign in</button>
+      </form>
+      <p class="small text-muted mt-3 mb-0">No account yet? Ask a Birddog admin. Forgot your password? Reset it on the <a href="{{ birddog_url }}">Birddog</a> sign-in screen.</p>
+    </div>
+  </section>
+  {% else %}
+  <ul class="gz-grid" aria-label="Tools">
+    {% for tool in tools %}
+    <li>
+      <a class="gz-tool" href="{{ tool.url }}" target="_blank" rel="noopener">
+        <span class="gz-tool-icon" aria-hidden="true"><i class="bi bi-{{ tool.icon }}"></i></span>
+        <span class="gz-tool-body">
+          <span class="gz-tool-name">{{ tool.name }}{% if tool.admin_only %} <span class="badge text-bg-light gz-badge">admin</span>{% endif %}</span>
+          <span class="gz-tool-summary">{{ tool.summary }}</span>
+          <span class="gz-tool-use">{{ tool.use_for }}</span>
+          <span class="gz-tool-host">{{ tool.url | replace('https://', '') | replace('/', '') }}</span>
+          <span class="gz-account-state gz-account-{{ tool.account.state }}"{% if tool.account.detail %} title="{{ tool.account.detail }}"{% endif %}>
+            <i class="bi bi-{{ {'ok': 'check-circle', 'pending': 'hourglass-split', 'error': 'exclamation-triangle', 'none': 'key'}[tool.account.state] }}" aria-hidden="true"></i>
+            {{ tool.account.label }}
+          </span>
+        </span>
+        <i class="bi bi-box-arrow-up-right gz-tool-out" aria-hidden="true"></i>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="small text-muted gz-note">Sign in to each tool with your Birddog email and password. Accounts are set up, and new passwords copied, each time you sign in to Birddog or Genizah. ToolJet still has its own sign-in.</p>
+  {% endif %}
+</main>
+
+{% if runtime_state == 'running' and not user %}
+<script>
+  // Same JSON login the Birddog page uses; the session cookie is this host's.
+  document.getElementById('gz-signin').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const error = document.getElementById('gz-signin-error');
+    error.hidden = true;
+    const form = event.target;
+    const response = await fetch('/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email: form.email.value.trim(), password: form.password.value}),
+    }).catch(() => null);
+    if (response && response.ok) { window.location.reload(); return; }
+    const body = response ? await response.json().catch(() => ({})) : {};
+    error.textContent = body.message || 'Sign-in failed. Try again.';
+    error.hidden = false;
+  });
+</script>
+{% endif %}
+</body>
+</html>

@@ -2,10 +2,12 @@
 # See deploy/jupyterhub/README.md. Everything configurable comes from the
 # environment set in deploy/docker-compose.yml (values live in deploy/.env).
 import hmac
+import json
 import os
 import sys
 
 from nativeauthenticator import NativeAuthenticator
+from tornado.httpclient import AsyncHTTPClient, HTTPClientError
 
 c = get_config()  # noqa: F821  (injected by JupyterHub)
 
@@ -21,19 +23,45 @@ c.JupyterHub.db_url = "sqlite:////data/jupyterhub.sqlite"
 c.JupyterHub.cookie_secret_file = "/data/jupyterhub_cookie_secret"
 
 
-# --- auth: NativeAuthenticator ------------------------------------------------
-# Users sign up at /hub/signup; the admin approves them at /hub/authorize.
-# The admin account itself is not a signup: its password is
-# JUPYTERHUB_ADMIN_PASSWORD from deploy/.env, so it always works and nobody can
-# claim the name by signing up first.
+# --- auth: Birddog accounts, then NativeAuthenticator -----------------------
+# An email-style username is a Birddog account: the hub asks birddog-web's
+# /login (BIRDDOG_LOGIN_URL), so people use their Birddog email and password
+# and Birddog admins are hub admins. Anything else goes to NativeAuthenticator
+# (signup at /hub/signup, approval at /hub/authorize). The env-defined admin
+# account is not a signup: its password is JUPYTERHUB_ADMIN_PASSWORD from
+# deploy/.env, so it always works and nobody can claim the name first.
+BIRDDOG_LOGIN_URL = env.get("BIRDDOG_LOGIN_URL", "")
+
+
 class BirddogAuthenticator(NativeAuthenticator):
+    async def _birddog_login(self, email, password):
+        try:
+            resp = await AsyncHTTPClient().fetch(
+                BIRDDOG_LOGIN_URL, method="POST", request_timeout=15,
+                headers={"Content-Type": "application/json"},
+                body=json.dumps({"email": email, "password": password}))
+        except HTTPClientError as err:
+            if err.code not in (400, 401):
+                self.log.warning("Birddog login check failed: %s", err)
+            return None
+        except Exception as err:   # birddog-web down: fall back to native accounts
+            self.log.warning("Birddog login check failed: %s", err)
+            return None
+        body = json.loads(resp.body or b"{}")
+        if not body.get("success"):
+            return None
+        return {"name": email, "admin": body.get("role") == "admin"}
+
     async def authenticate(self, handler, data):
         name = self.normalize_username(data.get("username", ""))
+        password = data.get("password", "")
         if name == ADMIN_USER:
-            ok = hmac.compare_digest(
-                data.get("password", "").encode(), ADMIN_PASSWORD.encode()
-            )
+            ok = hmac.compare_digest(password.encode(), ADMIN_PASSWORD.encode())
             return {"name": ADMIN_USER, "admin": True} if ok else None
+        if BIRDDOG_LOGIN_URL and "@" in name:
+            user = await self._birddog_login(name, password)
+            if user:
+                return user
         return await super().authenticate(handler, data)
 
 

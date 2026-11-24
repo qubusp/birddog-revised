@@ -47,6 +47,8 @@ Modules marked **legacy** are only used when `BIRDDOG_DATABASE_URL` is unset
 | `env.py` | `detect_environment()`, `store_backend()` (see below), per-base table-name suffixes (legacy NocoDB base split). |
 | `store.py` | `KeyValueStore` and `StringQueue`, one implementation per backend: Postgres (`app.kv`, `app.string_queue`), DynamoDB, SQLite. |
 | `log.py` | `EventLogger` (request log) and `LogService` / service usage log, per backend. |
+| `user_sync.py` | Copies Birddog accounts into Airflow, Mathesar, Marmot and Saltcorn with the same password, whenever the plain password is at hand (account creation, login, password change or reset); role changes and removals go out without one. Runs in birddog-web on the apps box; a tool is skipped unless its `BIRDDOG_SYNC_*` settings are set. Results in `app.user_sync`. |
+| `genizah.py` | Genizah, the entry page at `genizah.<PUBLIC_DOMAIN>` listing every tool and the person's account state in each. |
 | `user.py`, `user_store.py` | Accounts, watchlists, preferences. With the Postgres backend, `user_store.py` uses `app.user_account`, `app.watch`, `app.user_preference`. |
 | `cache.py` | Object cache for large payloads: local filesystem under `.cache/` or S3. Postgres backend means local filesystem. |
 | `watcher.py` | Watchlist change detection and alert state. Uses the store; on Postgres the state lives in `app.watch.watcher` and `app.alert_state` through `alert_store.py` (migration 016), which copies old `app.kv` `bd_watchers` rows once on first use. |
@@ -131,7 +133,7 @@ Kept for legacy mode, and for code that still imports them:
 On the server, `sh/deploy-data` applies new files before syncing code and
 records them in `public.schema_migrations`. The `migrate` service (`docker
 compose run --rm migrate`) re-runs all of them. Every file is written to be re-run. **010 and 015 do not exist**; the
-next free number is 017.
+next free number is 019.
 
 | File | One line |
 |---|---|
@@ -148,6 +150,7 @@ next free number is 017.
 | `012_web_role.sql` | Grants to `birddog_web`: read `core`, CRUD on `app`, write `core.archive_root`, nothing in `raw`. |
 | `013_source_kit.sql` | `raw.source_run`, `raw.source_record`, source-kit comments. |
 | `014_doc_matching.sql` | `fp_error` on `core.document` and `core.ftp_entry`; size and link-table indexes for duplicate and FTP matching. |
+| `018_user_sync.sql` | `app.user_sync`: per account and tool, the result of copying Birddog accounts into the other tools (`user_sync.py`). |
 | `016_alert_state.sql` | `app.watch.watcher` (jsonb watcher header) and `app.alert_state.history` (jsonb resolve history), a trigger deriving `modified`, `last_resolved`, `significance`, `sig_span`; grants `core.search()` to `birddog_web`. |
 
 ### Legacy vs Postgres mode
