@@ -1,6 +1,7 @@
 """Pure-logic tests for birddog/books.py (no network, no database)."""
 
 import unittest
+import unittest.mock
 
 from birddog import books
 
@@ -26,6 +27,20 @@ class EstimateDecideTests(unittest.TestCase):
         big, big_usd = books.estimate(363, 1600)
         self.assertLess(small, big)
         self.assertLess(small_usd, big_usd)
+
+    def test_estimate_matches_pilot(self):
+        # pilot, narrow rule: 380 pages at ~4175 probe tokens cost $4.96 all in,
+        # about $0.013 a page; a 500k-token book is about 104 pages
+        tokens, usd = books.estimate(100, 4175)
+        self.assertAlmostEqual(usd / 100, 0.0128, delta=0.001)
+        self.assertLess(books.estimate(104, 4175)[0], 500_000)
+        self.assertGreater(books.estimate(106, 4175)[0], 500_000)
+
+    def test_estimate_includes_rereads(self):
+        with unittest.mock.patch.object(books, "REREAD_SHARE", 0):
+            _, sonnet_only = books.estimate(100, 4175)
+        _, with_rereads = books.estimate(100, 4175)
+        self.assertGreater(with_rereads, sonnet_only)
 
     def test_decide(self):
         ok = {"readable": True, "legibility": 3}
@@ -83,9 +98,15 @@ class AssembleTests(unittest.TestCase):
         self.assertEqual(books.best_reading(readings), {"b": 2})
 
     def test_hard_page(self):
-        self.assertTrue(books._hard_page(self.PAGES[4]))
-        self.assertTrue(books._hard_page(self.PAGES[5]))
+        self.assertTrue(books._hard_page(self.PAGES[4]))      # illegible
+        self.assertFalse(books._hard_page(self.PAGES[5]))     # one low-confidence place only
         self.assertFalse(books._hard_page(self.PAGES[3]))
+
+    def test_hard_page_pilot_rule(self):
+        with unittest.mock.patch.object(books, "REREAD_LOW_CONFIDENCE", True):
+            self.assertTrue(books._hard_page(self.PAGES[4]))
+            self.assertTrue(books._hard_page(self.PAGES[5]))
+            self.assertFalse(books._hard_page(self.PAGES[3]))
 
 
 class FileTitleTests(unittest.TestCase):

@@ -8,8 +8,9 @@ Per book, in order:
             gives the estimate for the whole book. Over the auto limit the book
             waits in `needs_approval` for a person (Mathesar).
   read      Sonnet reads every page, a few pages per call, and lists the places
-            with the words they were read from. Pages Sonnet marks illegible or
-            low-confidence are read again by Opus.
+            with the words they were read from. Pages Sonnet marks illegible
+            are read again by Opus (REREAD_LOW_CONFIDENCE adds pages with a
+            low-confidence place, as the pilot did).
   assemble  Haiku groups the spellings of the same place across pages; a fuzzy
             match links each group to core.location where it can.
 
@@ -54,10 +55,23 @@ AUTO_LIMIT_TOKENS = 500_000    # a book estimated above this waits for approval
 PAGES_PER_CALL = 4             # page images per extraction call
 PAGE_WIDTH = 1600              # px, Commons renders the page at (about) this width
 SAMPLE_PAGES = 3               # probe sample
-# estimate per page beyond its image: output incl. thinking, and a share of
-# the prompt; refined once the pilot has real numbers
-EST_OUTPUT_PER_PAGE = 500
-EST_PROMPT_PER_CALL = 1500
+
+# Which Sonnet pages Opus reads again. The pilot re-read illegible pages AND
+# pages with any low-confidence place: 264 of 380 pages (69%), which made Opus
+# two thirds of the $14.37 spend. Only 5 pages were illegible. Set True to go
+# back to the pilot's rule (and REREAD_SHARE follows).
+REREAD_LOW_CONFIDENCE = False
+
+# Estimate, calibrated on the pilot (20 vital-record books, 380 pages, 2026-11):
+# Sonnet's input per page was 1.045x the probe's Haiku tokens_per_page, which
+# is the same image tokens plus the prompt: 689 tokens per call of 4 pages.
+# Sonnet wrote 362 output tokens per page (thinking included), Opus 972.
+EST_PROMPT_PER_CALL = 690
+EST_OUTPUT_PER_PAGE = 362
+EST_REREAD_OUTPUT_PER_PAGE = 972
+# share of pages re-read: 5/380 illegible under the narrow rule, 264/380 under
+# the pilot's rule
+REREAD_SHARE = 264 / 380 if REREAD_LOW_CONFIDENCE else 5 / 380
 MATCH_THRESHOLD = 0.91         # Jaro-Winkler, as birddog.locations.matcher
 
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
@@ -219,11 +233,18 @@ def sample_pages(page_count, n=SAMPLE_PAGES):
 
 
 def estimate(page_count, tokens_per_page):
-    """(tokens, dollars) to read a book with READ_MODEL."""
+    """(tokens, dollars) to read a book: READ_MODEL on every page plus the
+    expected REREAD_SHARE of pages again with REREAD_MODEL. The probe's image
+    tokens carry over to Sonnet (within 5% in the pilot), so only the prompt
+    and output are added. Assembly and the probe are left out (under 1%)."""
     calls = math.ceil(page_count / PAGES_PER_CALL)
     tokens_in = page_count * tokens_per_page + calls * EST_PROMPT_PER_CALL
     tokens_out = page_count * EST_OUTPUT_PER_PAGE
-    return tokens_in + tokens_out, round(cost_usd(READ_MODEL, tokens_in, tokens_out), 2)
+    reread_in = REREAD_SHARE * tokens_in
+    reread_out = REREAD_SHARE * page_count * EST_REREAD_OUTPUT_PER_PAGE
+    tokens = tokens_in + tokens_out + reread_in + reread_out
+    dollars = cost_usd(READ_MODEL, tokens_in, tokens_out) + cost_usd(REREAD_MODEL, reread_in, reread_out)
+    return round(tokens), round(dollars, 2)
 
 
 def decide(probe, est_tokens, auto_limit=AUTO_LIMIT_TOKENS):
@@ -312,7 +333,11 @@ per page shown, using the page numbers given."""
 
 
 def _hard_page(result):
-    return result.get("illegible") or any(p.get("confidence") == "low" for p in result.get("places", []))
+    """Does Opus read this page again? Illegible pages always; low-confidence
+    places only with REREAD_LOW_CONFIDENCE (see there for why it is off)."""
+    if result.get("illegible"):
+        return True
+    return REREAD_LOW_CONFIDENCE and any(p.get("confidence") == "low" for p in result.get("places", []))
 
 
 def read_pages(title, page_numbers, model, effort):
