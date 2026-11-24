@@ -977,3 +977,4 @@ body.bd-standalone { padding-top: 0; }
 .gz-account-pending { color: var(--bd-ochre); }
 .gz-account-error { color: var(--bd-danger); }
 .gz-account-none { color: var(--bd-ink-muted); }
+.gz-colophon { margin-top: 2.5rem; max-width: 40rem; font-style: italic; }

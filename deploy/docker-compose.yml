@@ -336,6 +336,11 @@ services:
       MATHESAR_ADMIN_USER: ${MATHESAR_ADMIN_USER:-admin}
       MATHESAR_ADMIN_PASSWORD: ${MATHESAR_ADMIN_PASSWORD:-}
       BIRDDOG_SYNC_SALTCORN_DB_URL: postgresql://saltcorn:${SALTCORN_DB_PASSWORD}@postgres:5432/saltcorn
+      # ToolJet: public URL (its auth cookie is HTTPS-only), admin birddog-sync
+      BIRDDOG_SYNC_TOOLJET_URL: https://apps.${PUBLIC_DOMAIN}
+      BIRDDOG_SYNC_TOOLJET_EMAIL: ${BIRDDOG_SYNC_TOOLJET_EMAIL:-}
+      BIRDDOG_SYNC_TOOLJET_PASSWORD: ${BIRDDOG_SYNC_TOOLJET_PASSWORD:-}
+      BIRDDOG_SYNC_TOOLJET_DB_URL: postgresql://tooljet:${TOOLJET_DB_PASSWORD}@postgres:5432/tooljet
       # password-reset mail (optional)
       BIRDDOG_SMTP_SERVER: ${BIRDDOG_SMTP_SERVER:-}
       BIRDDOG_SMTP_PORT: ${BIRDDOG_SMTP_PORT:-}

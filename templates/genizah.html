@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Genizah</title>
+  <title>Genizah: Jewish genealogy and documentation</title>
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
 {% include '_assets.html' %}
 </head>
@@ -28,7 +28,7 @@
 <main class="container gz-main">
   <section class="gz-intro">
     <h1 class="gz-title">Genizah</h1>
-    <p class="gz-lede">Every Birddog tool in one place. Sign in with your Birddog account.</p>
+    <p class="gz-lede">The portal for Jewish genealogy and documentation: every tool for finding, cataloguing and studying records from Ukrainian archives, in one place. Sign in with your Birddog account.</p>
   </section>
 
   {% if runtime_state != 'running' %}
@@ -73,8 +73,9 @@
     </li>
     {% endfor %}
   </ul>
-  <p class="small text-muted gz-note">Sign in to each tool with your Birddog email and password. Accounts are set up, and new passwords copied, each time you sign in to Birddog or Genizah. ToolJet still has its own sign-in.</p>
+  <p class="small text-muted gz-note">Sign in to each tool with your Birddog email and password. Accounts are set up, and new passwords copied, each time you sign in to Birddog or Genizah.</p>
   {% endif %}
+  <p class="small text-muted gz-colophon">A genizah is the storeroom where a community keeps worn-out writings instead of destroying them. The Cairo Genizah preserved a thousand years of Jewish life that way.</p>
 </main>
 
 {% if runtime_state == 'running' and not user %}

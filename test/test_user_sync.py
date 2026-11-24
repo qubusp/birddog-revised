@@ -124,3 +124,26 @@ def test_airflow_does_not_create_without_password():
     with patch("birddog.user_sync.requests.Session", return_value=session):
         assert "next login" in tool.upsert(ADA, None)
     assert session.post.call_count == 1   # the token only
+
+
+def test_tooljet_new_user_is_invited_then_set_up_with_tokens(monkeypatch):
+    from birddog.user_sync import ToolJet
+    tool = ToolJet({"BIRDDOG_SYNC_TOOLJET_URL": "https://tj", "BIRDDOG_SYNC_TOOLJET_EMAIL": "sync@x.invalid",
+                    "BIRDDOG_SYNC_TOOLJET_PASSWORD": "s", "BIRDDOG_SYNC_TOOLJET_DB_URL": "postgresql://x"})
+    passwords = []
+    monkeypatch.setattr(tool, "_set_password", lambda email, pw: passwords.append((email, pw)))
+    invited = {"id": "ou1", "email": ADA.email, "status": "invited", "role": "end-user",
+               "account_setup_token": "setup-tok", "invitation_token": "org-tok"}
+    session = MagicMock()
+    session.post.return_value = _response(201, {"current_organization_id": "org"})
+    session.get.side_effect = [_response(200, {"users": []}), _response(200, {"users": [invited]})]
+    session.headers = {}
+    with patch("birddog.user_sync.requests.Session", return_value=session):
+        assert tool.upsert(ADA, "pw-123456") == "created"
+    urls = [c.args[0] for c in session.post.call_args_list]
+    assert urls == ["https://tj/api/authenticate", "https://tj/api/organization-users",
+                    "https://tj/api/onboarding/setup-account-from-token"]
+    assert session.post.call_args_list[1].kwargs["json"]["role"] == "end-user"
+    setup = session.post.call_args_list[2].kwargs["json"]
+    assert (setup["token"], setup["organizationToken"], setup["password"]) == ("setup-tok", "org-tok", "pw-123456")
+    assert passwords == [(ADA.email, "pw-123456")]

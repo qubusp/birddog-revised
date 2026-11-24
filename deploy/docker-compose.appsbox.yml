@@ -117,6 +117,7 @@ services:
       GENIZAH_AIRFLOW_DOMAIN: ${DATABOX_PUBLIC_DOMAIN:-204-12-218-112.sslip.io}
       # user sync (birddog/user_sync.py): Saltcorn's database and Marmot live here
       BIRDDOG_SYNC_SALTCORN_DB_URL: postgresql://saltcorn:${SALTCORN_DB_PASSWORD}@apps-postgres:5432/saltcorn
+      BIRDDOG_SYNC_TOOLJET_DB_URL: postgresql://tooljet:${TOOLJET_DB_PASSWORD}@apps-postgres:5432/tooljet
       BIRDDOG_SYNC_MARMOT_URL: http://marmot:8080
       BIRDDOG_SYNC_MARMOT_API_KEY: ${BIRDDOG_SYNC_MARMOT_API_KEY:-}
   caddy:

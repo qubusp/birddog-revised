@@ -81,4 +81,3 @@ def test_cards_show_account_state(client, monkeypatch):
     assert "Account sync failed" in body                      # marmot
     assert "at least 8 characters" in body                    # its detail, as a tooltip
     assert "Account not set up yet" in body                   # saltcorn: no row
-    assert "Own sign-in" in body                              # tooljet

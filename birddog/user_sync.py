@@ -1,4 +1,5 @@
-"""Copies Birddog accounts (app.user_account) into the other tools.
+"""Copies Birddog accounts (app.user_account) into the other tools: Airflow,
+Mathesar, Marmot, Saltcorn and ToolJet.
 
 Birddog is the one place accounts are made. Whenever birddog-web or the
 user_admin CLI sees an account's plain password (creation, login, password
@@ -59,6 +60,11 @@ class Account:
 
 class SyncError(Exception):
     pass
+
+
+def _bcrypt(password):
+    import bcrypt
+    return bcrypt.hashpw(password.encode()[:72], bcrypt.gensalt(10)).decode()
 
 
 def _check(resp, what):
@@ -282,10 +288,8 @@ class Saltcorn:
 
     @staticmethod
     def hash_password(password):
-        import bcrypt
         # Saltcorn checks with bcryptjs; $2a$ and $2b$ are the same algorithm
-        digest = bcrypt.hashpw(password.encode()[:72], bcrypt.gensalt(10)).decode()
-        return "$2a$" + digest[4:]
+        return "$2a$" + _bcrypt(password)[4:]
 
     def _connect(self):
         import psycopg2
@@ -317,7 +321,99 @@ class Saltcorn:
             cur.execute("UPDATE users SET disabled = true WHERE lower(email) = %s", (email,))
 
 
-TOOL_CLASSES = (Airflow, Mathesar, Marmot, Saltcorn)
+class ToolJet:
+    """ToolJet CE: its web API as a workspace admin, plus its users table.
+
+    New people are invited and their account set up at once with the
+    account-setup and invitation tokens the admin's user list carries (no
+    email involved). The CE API cannot set someone else's password, so a
+    password change writes users.password_digest (bcrypt) directly.
+    """
+    key = "tooljet"
+    ROLES = {"admin": "admin", "user": "end-user"}
+
+    def __init__(self, env):
+        self.base = (env.get("BIRDDOG_SYNC_TOOLJET_URL") or "").rstrip("/")
+        self.admin = (env.get("BIRDDOG_SYNC_TOOLJET_EMAIL") or "").lower()
+        self.admin_password = env.get("BIRDDOG_SYNC_TOOLJET_PASSWORD")
+        self.db_url = env.get("BIRDDOG_SYNC_TOOLJET_DB_URL")
+
+    @property
+    def configured(self):
+        return bool(self.base and self.admin and self.admin_password and self.db_url)
+
+    def _session(self):
+        s = requests.Session()
+        resp = _check(s.post(f"{self.base}/api/authenticate", timeout=_TIMEOUT,
+                             json={"email": self.admin, "password": self.admin_password}),
+                      "ToolJet login")
+        s.headers["tj-workspace-id"] = resp.json()["current_organization_id"]
+        return s
+
+    def _find(self, s, email):
+        resp = _check(s.get(f"{self.base}/api/organization-users", timeout=_TIMEOUT,
+                            params={"searchText": email, "page": 1}), "ToolJet lookup")
+        return next((u for u in resp.json().get("users") or [] if (u.get("email") or "").lower() == email), None)
+
+    def _activate(self, s, account, password):
+        """Finish an invite: set up the account, or accept for an existing one."""
+        user = self._find(s, account.email)
+        first, last = account.first_last
+        if user and user.get("account_setup_token"):
+            _check(s.post(f"{self.base}/api/onboarding/setup-account-from-token", timeout=_TIMEOUT, json={
+                "first_name": first, "last_name": last, "password": password,
+                "token": user["account_setup_token"], "organizationToken": user.get("invitation_token")}),
+                "ToolJet account setup")
+        elif user and user.get("invitation_token"):
+            _check(s.post(f"{self.base}/api/onboarding/accept-invite", timeout=_TIMEOUT,
+                          json={"token": user["invitation_token"]}), "ToolJet accept invite")
+
+    def _set_password(self, email, password):
+        import psycopg2
+        with psycopg2.connect(self.db_url, connect_timeout=10) as conn, conn.cursor() as cur:
+            cur.execute("UPDATE users SET password_digest = %s, password_retry_count = 0 WHERE lower(email) = %s",
+                        (_bcrypt(password), email))
+            if cur.rowcount != 1:
+                raise SyncError("ToolJet: no users row to set the password on")
+
+    def upsert(self, account, password):
+        if account.email == self.admin:
+            raise SyncError("ToolJet: this email is the sync's own admin account")
+        if password is not None and len(password) < 5:
+            raise SyncError("ToolJet needs a password of at least 5 characters")
+        s = self._session()
+        first, last = account.first_last
+        user = self._find(s, account.email)
+        if user is None:
+            if not password:
+                return "no account yet (made at next login)"
+            _check(s.post(f"{self.base}/api/organization-users", timeout=_TIMEOUT, json={
+                "firstName": first, "lastName": last, "email": account.email,
+                "groups": [], "role": self.ROLES[account.role]}), "ToolJet invite")
+            self._activate(s, account, password)
+            self._set_password(account.email, password)   # an existing ToolJet user keeps theirs otherwise
+            return "created"
+        if user["status"] == "archived":
+            _check(s.post(f"{self.base}/api/organization-users/{user['id']}/unarchive", timeout=_TIMEOUT,
+                          json={}), "ToolJet unarchive")
+        if user["status"] != "active" and password:
+            self._activate(s, account, password)
+        if user.get("role") != self.ROLES[account.role] or user.get("first_name") != first:
+            _check(s.put(f"{self.base}/api/organization-users/{user['id']}", timeout=_TIMEOUT, json={
+                "firstName": first, "lastName": last, "role": self.ROLES[account.role]}), "ToolJet update")
+        if password:
+            self._set_password(account.email, password)
+        return "updated"
+
+    def remove(self, email):
+        s = self._session()
+        user = self._find(s, email)
+        if user and user["status"] != "archived":
+            _check(s.post(f"{self.base}/api/organization-users/{user['id']}/archive", timeout=_TIMEOUT,
+                          json={}), "ToolJet archive")
+
+
+TOOL_CLASSES = (Airflow, Mathesar, Marmot, Saltcorn, ToolJet)
 
 
 def configured_tools(env=None):

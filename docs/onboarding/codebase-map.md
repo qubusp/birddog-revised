@@ -47,7 +47,7 @@ Modules marked **legacy** are only used when `BIRDDOG_DATABASE_URL` is unset
 | `env.py` | `detect_environment()`, `store_backend()` (see below), per-base table-name suffixes (legacy NocoDB base split). |
 | `store.py` | `KeyValueStore` and `StringQueue`, one implementation per backend: Postgres (`app.kv`, `app.string_queue`), DynamoDB, SQLite. |
 | `log.py` | `EventLogger` (request log) and `LogService` / service usage log, per backend. |
-| `user_sync.py` | Copies Birddog accounts into Airflow, Mathesar, Marmot and Saltcorn with the same password, whenever the plain password is at hand (account creation, login, password change or reset); role changes and removals go out without one. Runs in birddog-web on the apps box; a tool is skipped unless its `BIRDDOG_SYNC_*` settings are set. Results in `app.user_sync`. |
+| `user_sync.py` | Copies Birddog accounts into Airflow, Mathesar, Marmot, Saltcorn and ToolJet with the same password, whenever the plain password is at hand (account creation, login, password change or reset); role changes and removals go out without one. Runs in birddog-web on the apps box; a tool is skipped unless its `BIRDDOG_SYNC_*` settings are set. Results in `app.user_sync`. |
 | `genizah.py` | Genizah, the entry page at `genizah.<PUBLIC_DOMAIN>` listing every tool and the person's account state in each. |
 | `user.py`, `user_store.py` | Accounts, watchlists, preferences. With the Postgres backend, `user_store.py` uses `app.user_account`, `app.watch`, `app.user_preference`. |
 | `cache.py` | Object cache for large payloads: local filesystem under `.cache/` or S3. Postgres backend means local filesystem. |

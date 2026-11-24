@@ -1,4 +1,5 @@
-"""Genizah: the entry page listing every tool of the stack.
+"""Genizah: the portal for Jewish genealogy and documentation work, listing
+every tool of the stack.
 
 Served by birddog-web on the host genizah.<PUBLIC_DOMAIN> (Caddy sends that
 host to the same app; service.py renders the page at "/" for it), behind the
@@ -31,31 +32,31 @@ class Tool:
 
 TOOLS = (
     Tool("birddog", "Birddog", "birddog",
-         "Tracks archival documents on uk.wikisource.org.",
-         "Browse archives, keep watchlists, get alerts on changes.",
+         "Follows Ukrainian archival records on uk.wikisource.org.",
+         "Browse archives, watch the files you research, get alerts when pages change.",
          "binoculars", login="birddog"),
     Tool("mathesar", "Mathesar", "data",
-         "The Birddog database as spreadsheets.",
-         "Look up, filter and correct records in core tables.",
+         "The catalog of documents, pages and places, as spreadsheets.",
+         "Look up records and correct them: document types, places, transcription status.",
          "table"),
     Tool("jupyterhub", "JupyterHub", "hub",
-         "Shared Python notebooks next to the database.",
-         "Ad-hoc analysis, exports and one-off fixes.",
+         "Research notebooks on the whole catalog.",
+         "Analyse records, review the places found in books, make exports.",
          "journal-code", login="birddog"),
     Tool("tooljet", "ToolJet", "apps",
-         "Internal apps built on the database.",
-         "Use or build curator screens and forms.",
-         "grid-1x2", login="separate"),
+         "Curation apps built on the catalog.",
+         "Use or build screens for documentation work.",
+         "grid-1x2"),
     Tool("saltcorn", "Saltcorn", "saltcorn",
-         "No-code apps and forms.",
-         "Data entry forms and simple public views.",
+         "Forms and simple public views.",
+         "Collect and share records without code.",
          "ui-checks-grid"),
     Tool("marmot", "Marmot", "catalog",
-         "Data catalog and lineage.",
-         "Find which table holds what, and where it comes from.",
+         "What the data holds and where it comes from.",
+         "Find which table has a given kind of record, and its source.",
          "diagram-3"),
     Tool("airflow", "Airflow", "airflow",
-         "The pipelines that keep the database current.",
+         "The pipelines that keep the catalog in step with the archives.",
          "Check pipeline runs, start or pause one.",
          "arrow-repeat", data_box=True, admin_only=True),
 )
