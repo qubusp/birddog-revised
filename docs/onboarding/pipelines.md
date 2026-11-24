@@ -99,6 +99,29 @@ Behaviour:
   token quota the bound: about 650 to 1,300 documents a day, so a run of 300
   usually stops on the quota after a few hours and the rest wait.
 
+## Book reading (`dags/yaml/books.yml`)
+
+| DAG | Trigger | What it does |
+|---|---|---|
+| `read_books` | manual (pilot) | `enqueue` queues `enqueue` new PDF books of `doc_type` (default `Vitals`, optional `max_pages`) into `core.book_read`. `probe` (Haiku) looks at 3 sample pages of every pending book, measures tokens per page and estimates the whole book: unreadable scans stop, books over `auto_limit_tokens` (500k) go to `needs_approval`, the rest to `approved`. `read` (Sonnet; Opus re-reads illegible or low-confidence pages) reads approved books a few pages per call into `core.book_page`, until the run has spent `budget_usd` ($10); an interrupted book resumes next run. `assemble` (Haiku) groups spellings of the same place and fuzzy-matches them to `core.location` into `core.book_read.places`. All Claude tasks in pool `llm_api`. |
+
+Code: `birddog/books.py`, `birddog/dag_tasks_books.py`; tables: migration 017.
+Page images come from Commons' page renderer (`iiurlparam=pageN-1600px`), so
+PDFs are never downloaded. Costs are stored per book and per page.
+
+**Approving** a book over the limit: it is listed in `views.books__needs_approval`
+(Mathesar); set `status` to `approved` or `rejected` on the same `document_id` in
+`core.book_read` (`birddog_ui` may update only `status` and `approval_note`), then
+trigger the DAG again.
+
+**Key**: Airflow connection `anthropic`, password = the API key
+(`airflow connections add anthropic --conn-type generic --conn-password ...` in
+the scheduler container). Stored in Airflow's database, so no restart. Without
+it the Claude tasks skip.
+
+Nothing writes `core.document_location` yet: the pilot's places are checked by
+hand first.
+
 ## App-triggered DAGs (`dags/yaml/app.yml`)
 
 These are started by the web app through the REST API (`birddog/airflow_jobs.py`).
