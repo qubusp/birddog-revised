@@ -93,6 +93,14 @@ class FileTitleTests(unittest.TestCase):
         url = "https://commons.wikimedia.org/wiki/File:%D0%94%D0%90%D0%90%D0%A0%D0%9A_259-1-10.pdf"
         self.assertEqual(books.file_title(url), "File:ДААРК_259-1-10.pdf")
 
+    def test_file_title_without_wiki_prefix(self):
+        url = "https://commons.wikimedia.org/File:Фонд_1165_Опись_1_Дело_5.pdf"
+        self.assertEqual(books.file_title(url), "File:Фонд_1165_Опись_1_Дело_5.pdf")
+
+    def test_not_a_file(self):
+        with self.assertRaises(books.BookError):
+            books.file_title("https://commons.wikimedia.org/wiki/Category:Foo")
+
 
 if __name__ == "__main__":
     unittest.main()

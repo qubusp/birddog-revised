@@ -154,10 +154,13 @@ def _pages_content(images, prompt):
 # --- Commons -------------------------------------------------------------------
 
 def file_title(url):
-    """'File:...' from a Commons file page URL."""
-    if "/wiki/" not in url:
+    """'File:...' from a Commons file page URL (/wiki/File:... or, in some
+    imported records, /File:... without /wiki/)."""
+    path = url.split("/wiki/", 1)[1] if "/wiki/" in url else url.split("://", 1)[-1].split("/", 1)[-1]
+    title = unquote(path).split("?", 1)[0].split("#", 1)[0]
+    if not title.startswith("File:"):
         raise BookError(f"not a wiki file URL: {url}")
-    return unquote(url.split("/wiki/", 1)[1])
+    return title
 
 
 def page_image(title, page_no, width=PAGE_WIDTH):
