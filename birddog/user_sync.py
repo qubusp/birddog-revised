@@ -356,17 +356,22 @@ class ToolJet:
         return next((u for u in resp.json().get("users") or [] if (u.get("email") or "").lower() == email), None)
 
     def _activate(self, s, account, password):
-        """Finish an invite: set up the account, or accept for an existing one."""
+        """Finish an invite: set up the account, or accept for an existing one.
+
+        These calls act as the invitee and replace the session's login with
+        theirs, so they go through a fresh session: s stays the admin's.
+        """
         user = self._find(s, account.email)
         first, last = account.first_last
+        invitee = requests.Session()
         if user and user.get("account_setup_token"):
-            _check(s.post(f"{self.base}/api/onboarding/setup-account-from-token", timeout=_TIMEOUT, json={
+            _check(invitee.post(f"{self.base}/api/onboarding/setup-account-from-token", timeout=_TIMEOUT, json={
                 "first_name": first, "last_name": last, "password": password,
                 "token": user["account_setup_token"], "organizationToken": user.get("invitation_token")}),
                 "ToolJet account setup")
         elif user and user.get("invitation_token"):
-            _check(s.post(f"{self.base}/api/onboarding/accept-invite", timeout=_TIMEOUT,
-                          json={"token": user["invitation_token"]}), "ToolJet accept invite")
+            _check(invitee.post(f"{self.base}/api/onboarding/accept-invite", timeout=_TIMEOUT,
+                                json={"token": user["invitation_token"]}), "ToolJet accept invite")
 
     def _set_password(self, email, password):
         import psycopg2

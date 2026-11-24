@@ -140,6 +140,7 @@ def test_tooljet_new_user_is_invited_then_set_up_with_tokens(monkeypatch):
     session.headers = {}
     with patch("birddog.user_sync.requests.Session", return_value=session):
         assert tool.upsert(ADA, "pw-123456") == "created"
+    # one Session object stands in for both the admin's and the invitee's
     urls = [c.args[0] for c in session.post.call_args_list]
     assert urls == ["https://tj/api/authenticate", "https://tj/api/organization-users",
                     "https://tj/api/onboarding/setup-account-from-token"]
@@ -163,3 +164,23 @@ def test_grafana_creates_viewer_and_admin_roles():
     assert session.post.call_args.kwargs["json"]["login"] == ADA.email
     assert session.patch.call_args.args[0] == "http://g:3000/api/org/users/7"
     assert session.patch.call_args.kwargs["json"] == {"role": "Viewer"}
+
+
+def test_tooljet_invite_steps_use_a_separate_session(monkeypatch):
+    from birddog.user_sync import ToolJet
+    tool = ToolJet({"BIRDDOG_SYNC_TOOLJET_URL": "https://tj", "BIRDDOG_SYNC_TOOLJET_EMAIL": "sync@x.invalid",
+                    "BIRDDOG_SYNC_TOOLJET_PASSWORD": "s", "BIRDDOG_SYNC_TOOLJET_DB_URL": "postgresql://x"})
+    monkeypatch.setattr(tool, "_set_password", lambda *a: None)
+    archived = {"id": "ou1", "email": ADA.email, "status": "archived", "first_name": "Ada",
+                "role_group": [{"name": "end-user"}]}
+    invited = {**archived, "status": "invited", "invitation_token": "org-tok"}
+    admin, invitee = MagicMock(), MagicMock()
+    admin.headers = {}
+    admin.post.return_value = _response(201, {"current_organization_id": "org"})
+    admin.get.side_effect = [_response(200, {"users": [archived]}), _response(200, {"users": [invited]})]
+    admin.put.return_value = _response(200)
+    invitee.post.return_value = _response(201)
+    with patch("birddog.user_sync.requests.Session", side_effect=[admin, invitee]):
+        tool.upsert(Account(ADA.email, ADA.name, "admin"), "pw-123456")
+    assert invitee.post.call_args.args[0] == "https://tj/api/onboarding/accept-invite"
+    assert admin.put.call_args.kwargs["json"]["role"] == "admin"          # still the admin's session
