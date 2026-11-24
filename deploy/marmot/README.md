@@ -12,10 +12,12 @@ locally `127.0.0.1:8085` (tunnel: `ssh -N -L 8085:127.0.0.1:8085 administrator@1
 
 ## What feeds it
 
-- **Postgres pipeline** (set up in the UI, scheduled inside Marmot): host `postgres`
-  (the data box over WireGuard), database `birddog`, user `birddog_reader`
-  (read-only; password = `JUPYTER_DB_PASSWORD`). Catalogs the `raw` and `core`
-  schemas, columns and foreign keys. `birddog_reader` cannot read `app`.
+- **Postgres pipeline** (scheduled inside Marmot): host `postgres` (the data box
+  over WireGuard), database `birddog`, user `marmot_reader` (read-only, made by
+  `deploy/db/init/06-marmot-reader.sh`; password `MARMOT_READER_DB_PASSWORD` in the
+  data box's `.env`). Catalogs `raw`, `core` and `views`: tables, columns, foreign
+  keys. It cannot read `app`. Its own role because the plugin reads every
+  database's size, which needs `pg_read_all_stats`.
 - **Airflow**: Marmot's Airflow plugin speaks only the Airflow 2 API (`/api/v1`),
   so it does not work with our Airflow 3. Lineage comes from Airflow's OpenLineage
   provider instead (already in the image), posting to

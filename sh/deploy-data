@@ -28,7 +28,7 @@
 #                       running it (for a database known to be up to date,
 #                       instead of the first run re-applying all of them)
 #   --init-roles        re-run the role scripts db/init/02-ui.sh, 03-reader.sh,
-#                       05-web.sh as postgres (creates missing roles, re-syncs
+#                       05-web.sh, 06-marmot-reader.sh as postgres (creates missing roles, re-syncs
 #                       their passwords from .env). Needed once on a new box.
 set -euo pipefail
 # shellcheck source=lib/deploy-common.sh
@@ -72,6 +72,7 @@ BIRDDOG_UI_DB_PASSWORD hex24
 MATHESAR_DB_PASSWORD hex24
 JUPYTER_DB_PASSWORD hex24
 BIRDDOG_WEB_DB_PASSWORD hex24
+MARMOT_READER_DB_PASSWORD hex24
 AIRFLOW_API_USER literal:birddog-web
 AIRFLOW_API_PASSWORD hex24"
 
@@ -166,7 +167,7 @@ SQL
 init_roles() {
     say "Role scripts (as postgres)"
     if [ "$DRY_RUN" = 1 ]; then
-        info "would run db/init/02-ui.sh, 03-reader.sh, 05-web.sh"
+        info "would run db/init/02-ui.sh, 03-reader.sh, 05-web.sh, 06-marmot-reader.sh"
         return 0
     fi
     # passwords travel in the exec environment, read from .env on the server
@@ -175,6 +176,8 @@ init_roles() {
         docker compose exec -T -e JUPYTER_DB_PASSWORD postgres bash /docker-entrypoint-initdb.d/03-reader.sh </dev/null"
     remote "BIRDDOG_WEB_DB_PASSWORD=\"\$(sed -n 's/^BIRDDOG_WEB_DB_PASSWORD=//p' .env)\" \
         docker compose exec -T -e BIRDDOG_WEB_DB_PASSWORD postgres bash /docker-entrypoint-initdb.d/05-web.sh </dev/null"
+    remote "MARMOT_READER_DB_PASSWORD=\"\$(sed -n 's/^MARMOT_READER_DB_PASSWORD=//p' .env)\" \
+        docker compose exec -T -e MARMOT_READER_DB_PASSWORD postgres bash /docker-entrypoint-initdb.d/06-marmot-reader.sh </dev/null"
 }
 
 [ "$INIT_ROLES" = 1 ] && init_roles
