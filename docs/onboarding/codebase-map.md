@@ -151,6 +151,7 @@ next free number is 022.
 | `013_source_kit.sql` | `raw.source_run`, `raw.source_record`, source-kit comments. |
 | `014_doc_matching.sql` | `fp_error` on `core.document` and `core.ftp_entry`; size and link-table indexes for duplicate and FTP matching. |
 | `021_location_coordinates.sql` | `latitude`, `longitude`, `region`, `jewish_population` on `core.location` (from the NocoDB raw records); Grafana views `views.map__locations`, `views.map__book_places`, `views.stats__books`; grants for `birddog_reader`. |
+| `022_location_name_encoding.sql` | `core.repair_mojibake(text)`: undoes UTF-8 read as Windows-1252 where it round-trips cleanly; repairs the names in `core.location` (both NocoDB location transforms call it too, since `raw.nocodb_record` keeps the broken text). |
 | `018_user_sync.sql` | `app.user_sync`: per account and tool, the result of copying Birddog accounts into the other tools (`user_sync.py`). |
 | `016_alert_state.sql` | `app.watch.watcher` (jsonb watcher header) and `app.alert_state.history` (jsonb resolve history), a trigger deriving `modified`, `last_resolved`, `significance`, `sig_span`; grants `core.search()` to `birddog_web`. |
 
