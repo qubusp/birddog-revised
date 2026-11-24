@@ -22,8 +22,14 @@ locally `127.0.0.1:8085` (tunnel: `ssh -N -L 8085:127.0.0.1:8085 administrator@1
   so it does not work with our Airflow 3. Lineage comes from Airflow's OpenLineage
   provider instead (already in the image), posting to
   `https://catalog.<PUBLIC_DOMAIN>/api/v1/lineage` with a Marmot API key (the data
-  box reaches the apps box's Marmot only through Caddy). Turning that on means new `.env` keys on the data box and
-  recreating the `airflow-*` services, which needs the owner's OK (operations.md).
+  box reaches the apps box's Marmot only through Caddy). Settings:
+  `AIRFLOW__OPENLINEAGE__NAMESPACE` and `AIRFLOW__OPENLINEAGE__TRANSPORT` in the
+  data box's `.env` (format in `.env.example`). The key belongs to the Marmot
+  service account `airflow`, whose only role is `lineage-writer` (`assets:view`,
+  `assets:manage`); the built-in `user` role cannot write lineage. The settings
+  reach Airflow only when the `airflow-*` services are recreated (owner's OK).
+  Our tasks use psycopg2 directly, not Airflow hooks, so OpenLineage sees job
+  runs and the Assets a DAG declares, not table-level SQL lineage.
 
 ## Operations
 
