@@ -164,20 +164,29 @@ SQL
     done
 }
 
+run_role_script() {   # run_role_script FILE [ENV_VAR]: local db/init/FILE as postgres
+    local file=$1 var=${2:-}
+    if [ -n "$var" ]; then
+        remote "$var=\"\$(sed -n 's/^$var=//p' .env)\" docker compose exec -T -e $var postgres bash -s" \
+            < "deploy/db/init/$file"
+    else
+        remote "docker compose exec -T postgres bash -s" < "deploy/db/init/$file"
+    fi
+}
+
 init_roles() {
     say "Role scripts (as postgres)"
     if [ "$DRY_RUN" = 1 ]; then
         info "would run db/init/02-ui.sh, 03-reader.sh, 05-web.sh, 06-marmot-reader.sh"
         return 0
     fi
-    # passwords travel in the exec environment, read from .env on the server
-    remote "docker compose exec -T postgres bash /docker-entrypoint-initdb.d/02-ui.sh </dev/null"
-    remote "JUPYTER_DB_PASSWORD=\"\$(sed -n 's/^JUPYTER_DB_PASSWORD=//p' .env)\" \
-        docker compose exec -T -e JUPYTER_DB_PASSWORD postgres bash /docker-entrypoint-initdb.d/03-reader.sh </dev/null"
-    remote "BIRDDOG_WEB_DB_PASSWORD=\"\$(sed -n 's/^BIRDDOG_WEB_DB_PASSWORD=//p' .env)\" \
-        docker compose exec -T -e BIRDDOG_WEB_DB_PASSWORD postgres bash /docker-entrypoint-initdb.d/05-web.sh </dev/null"
-    remote "MARMOT_READER_DB_PASSWORD=\"\$(sed -n 's/^MARMOT_READER_DB_PASSWORD=//p' .env)\" \
-        docker compose exec -T -e MARMOT_READER_DB_PASSWORD postgres bash /docker-entrypoint-initdb.d/06-marmot-reader.sh </dev/null"
+    # Each script is streamed from this checkout (the server's copy is only
+    # synced later, so a role script new in this deploy would not be there yet).
+    # Passwords travel in the exec environment, read from .env on the server.
+    run_role_script 02-ui.sh
+    run_role_script 03-reader.sh JUPYTER_DB_PASSWORD
+    run_role_script 05-web.sh BIRDDOG_WEB_DB_PASSWORD
+    run_role_script 06-marmot-reader.sh MARMOT_READER_DB_PASSWORD
 }
 
 [ "$INIT_ROLES" = 1 ] && init_roles
