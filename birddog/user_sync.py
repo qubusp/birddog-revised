@@ -420,8 +420,9 @@ class ToolJet:
 class Grafana:
     """Grafana's admin HTTP API, as the built-in admin (basic auth).
 
-    Birddog admins are org Admins, everyone else Viewer: dashboards come from
-    the repo (deploy/grafana/dashboards), so nobody needs to edit them there.
+    Birddog admins are org Admins and server admins; everyone else is a
+    Viewer. Dashboards come from the repo (deploy/grafana/dashboards); admins
+    can edit and save them in Grafana until the file changes.
     """
     key = "grafana"
     ROLES = {"admin": "Admin", "user": "Viewer"}
@@ -471,6 +472,9 @@ class Grafana:
                              json={"password": password}), "Grafana password")
         _check(s.patch(f"{self.base}/api/org/users/{user_id}", timeout=_TIMEOUT,
                        json={"role": self.ROLES[account.role]}), "Grafana role")
+        # Birddog admins are also Grafana server admins (Administration menu)
+        _check(s.put(f"{self.base}/api/admin/users/{user_id}/permissions", timeout=_TIMEOUT,
+                     json={"isGrafanaAdmin": account.is_admin}), "Grafana server admin")
         return result
 
     def remove(self, email):

@@ -20,13 +20,17 @@ records, and the views `views.map__locations`, `views.map__book_places` and
 "documents" counts on the archive map stay 0 until documents are linked to
 places.
 
-**Editing dashboards.** The JSON files are provisioned read-only
-(`provisioning/dashboards/birddog.yaml`). To change one, edit it in Grafana,
-then *Export → Save to file* and commit the JSON over the old file, and
-deploy the apps box. Grafana reloads the files without a restart.
+**Making dashboards.** `make_dashboards.py` writes the JSON files; edit it and
+rerun it rather than hand-editing JSON, so panels stay consistent.
+
+**Editing dashboards.** Admins can edit and save the provisioned dashboards
+in Grafana (`allowUiUpdates`), but the JSON files in the repo win: when a file
+changes and is deployed, Grafana replaces the saved version with it. To keep
+an edit for good, *Export → Save to file*, commit the JSON over the old file
+and deploy the apps box. Grafana reloads the files without a restart.
 
 **Accounts.** Birddog accounts are copied in by `birddog/user_sync.py`
-(Birddog admin → Admin, user → Viewer), with the Birddog password. The
+(Birddog admin → Admin and server admin, user → Viewer), with the Birddog password. The
 break-glass admin is `admin` / `GRAFANA_ADMIN_PASSWORD` in the apps box
 `deploy/.env` (made by `sh/deploy-apps`).
 

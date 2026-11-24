@@ -156,8 +156,10 @@ def test_grafana_creates_viewer_and_admin_roles():
     session.get.return_value = _response(404)
     session.post.return_value = _response(200, {"id": 7})
     session.patch.return_value = _response(200)
+    session.put.return_value = _response(200)
     with patch("birddog.user_sync.requests.Session", return_value=session):
         assert tool.upsert(ADA, "pw-123456") == "created"
+    assert session.put.call_args.kwargs["json"] == {"isGrafanaAdmin": False}
     assert session.post.call_args.kwargs["json"]["login"] == ADA.email
     assert session.patch.call_args.args[0] == "http://g:3000/api/org/users/7"
     assert session.patch.call_args.kwargs["json"] == {"role": "Viewer"}

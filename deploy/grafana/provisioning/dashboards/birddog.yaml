@@ -1,11 +1,12 @@
-# Dashboards live in the repo (deploy/grafana/dashboards/*.json). Edits made in
-# the UI are not saved back: export the JSON and commit it.
+# Dashboards live in the repo (deploy/grafana/dashboards/*.json). Admins can
+# edit and save them in Grafana; a later change to the file overwrites that.
+# To keep a UI edit for good, export the JSON and commit it.
 apiVersion: 1
 providers:
   - name: birddog
     folder: Birddog
     type: file
-    allowUiUpdates: false
+    allowUiUpdates: true
     disableDeletion: true
     options:
       path: /var/lib/grafana/dashboards
