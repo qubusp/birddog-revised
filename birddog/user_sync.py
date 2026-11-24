@@ -398,11 +398,15 @@ class ToolJet:
                           json={}), "ToolJet unarchive")
         if user["status"] != "active" and password:
             self._activate(s, account, password)
-        if user.get("role") != self.ROLES[account.role] or user.get("first_name") != first:
-            _check(s.put(f"{self.base}/api/organization-users/{user['id']}", timeout=_TIMEOUT, json={
-                "firstName": first, "lastName": last, "role": self.ROLES[account.role]}), "ToolJet update")
         if password:
             self._set_password(account.email, password)
+        # the list's "role" is a legacy field ("all-users"); the role is the default group
+        current_role = next((g["name"] for g in user.get("role_group") or []), None)
+        if current_role != self.ROLES[account.role] or user.get("first_name") != first:
+            # addGroups is required (the handler iterates it) even when unchanged
+            _check(s.put(f"{self.base}/api/organization-users/{user['id']}", timeout=_TIMEOUT, json={
+                "firstName": first, "lastName": last, "role": self.ROLES[account.role], "addGroups": []}),
+                "ToolJet update")
         return "updated"
 
     def remove(self, email):
