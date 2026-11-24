@@ -10,7 +10,10 @@
 -- Mentions come from each page's best reading: the Opus re-read when there is
 -- one, else Sonnet's. Read-only (Mathesar shows views read-only). Idempotent.
 
-CREATE OR REPLACE VIEW views.books__places AS
+-- dropped first: 020 changed location_id to text, and a re-run must not fail on
+-- the type (CREATE OR REPLACE VIEW cannot change a column's type)
+DROP VIEW IF EXISTS views.books__places;
+CREATE VIEW views.books__places AS
 SELECT b.document_id,
        d.title,
        p.ordinality::int                       AS place_no,
@@ -21,7 +24,7 @@ SELECT b.document_id,
        (SELECT string_agg(x, ', ') FROM jsonb_array_elements_text(p.value -> 'pages') x) AS pages,
        (SELECT string_agg(x, ' | ') FROM jsonb_array_elements_text(p.value -> 'variants') x) AS variants,
        (SELECT string_agg(x, ', ') FROM jsonb_array_elements_text(p.value -> 'kinds') x) AS kinds,
-       (p.value ->> 'location_id')::bigint     AS location_id,
+       p.value ->> 'location_id'               AS location_id,   -- text, as core.location
        p.value ->> 'location_name'             AS location_name,
        (p.value ->> 'match_score')::numeric    AS match_score,
        d.url
