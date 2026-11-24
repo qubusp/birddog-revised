@@ -31,3 +31,9 @@ birddog.{$PUBLIC_DOMAIN} {
 	encode zstd gzip
 	reverse_proxy birddog-web:8000
 }
+
+# Marmot data catalog (deploy/marmot/README.md)
+catalog.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy marmot:8080
+}
