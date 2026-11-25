@@ -111,3 +111,18 @@ def index_transcripts():
     summary = index_transcribed(_run_id())
     _logger.info("index: %s", summary)
     return summary
+
+
+# --- guess_places (read_books, transcribe_books, guess_unmatched_places) ----------
+
+DEFAULT_GUESS_BUDGET_USD = 1.0
+
+
+def guess_places(budget_usd="", limit=""):
+    """Rough positions for unmatched places (birddog/place_guess.py)."""
+    from birddog.place_guess import guess_unmatched
+    _require_key()
+    budget = _float(budget_usd, DEFAULT_GUESS_BUDGET_USD)
+    summary = guess_unmatched(_run_id(), budget, limit=_int(limit, None))
+    _logger.info("guess_places (budget $%.2f): %s", budget, summary)
+    return summary

@@ -107,7 +107,7 @@ class DagTests(unittest.TestCase):
         dag = spec["transcribe_books"]
         self.assertEqual(dag["params"]["budget_usd"], 60)
         tasks = {t["task_id"]: t for t in dag["tasks"]}
-        self.assertEqual(set(tasks), {"enqueue", "transcribe", "index"})
+        self.assertEqual(set(tasks), {"enqueue", "transcribe", "index", "guess_places"})
         self.assertEqual(tasks["transcribe"]["pool"], "llm_api")
         from birddog import dag_tasks_books
         for t in tasks.values():

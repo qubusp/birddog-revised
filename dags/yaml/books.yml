@@ -30,6 +30,7 @@ read_books:
     max_pages: ""         # queue only books up to this many pages (empty = any)
     auto_limit_tokens: 500000
     budget_usd: 10
+    guess_budget_usd: 1   # guess_places: rough positions for unmatched places
   tasks:
     - task_id: enqueue
       decorator: airflow.sdk.task
@@ -64,6 +65,16 @@ read_books:
       execution_timeout:
         __type__: datetime.timedelta
         hours: 1
+    - task_id: guess_places
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.guess_places
+      budget_usd: "{{ params.guess_budget_usd }}"
+      pool: llm_api
+      trigger_rule: all_done
+      dependencies: [assemble]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 1
 
 # Full transcription (migration 023, birddog/book_transcripts.py): Sonnet
 # transcribes every page (text, register entries, places); Opus redoes the
@@ -80,6 +91,7 @@ transcribe_books:
     enqueue: 0            # books finished by read_books to queue this run
     document_ids: ""      # or these core.document ids, comma-separated
     budget_usd: 60
+    guess_budget_usd: 1   # guess_places: rough positions for unmatched places
   tasks:
     - task_id: enqueue
       decorator: airflow.sdk.task
@@ -101,6 +113,39 @@ transcribe_books:
       python_callable: birddog.dag_tasks_books.index_transcripts
       trigger_rule: all_done   # index what finished even if transcribe failed or timed out
       dependencies: [transcribe]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 1
+    - task_id: guess_places
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.guess_places
+      budget_usd: "{{ params.guess_budget_usd }}"
+      pool: llm_api
+      trigger_rule: all_done
+      dependencies: [index]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 1
+
+# Rough positions for book places no fuzzy match linked to core.location
+# (birddog/place_guess.py, migration 024): Sonnet at low effort, 25 places per
+# call, into core.place_guess; places already guessed are skipped (delete a
+# row there to guess it again). Shown with the 3 nearest known locations in
+# views.books__unmatched_places. read_books and transcribe_books run the same
+# task at their end; this DAG is for re-runs.
+guess_unmatched_places:
+  description: Claude gives rough positions for book places that matched no known location
+  schedule: null
+  params:
+    budget_usd: 2
+    limit: ""             # at most this many places (empty = all)
+  tasks:
+    - task_id: guess_places
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.guess_places
+      budget_usd: "{{ params.budget_usd }}"
+      limit: "{{ params.limit }}"
+      pool: llm_api
       execution_timeout:
         __type__: datetime.timedelta
         hours: 1
