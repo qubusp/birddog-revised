@@ -246,6 +246,12 @@
     }
   }
 
+  // filters from the address (links from the Map page: ?book=…&group=…)
+  const wanted = new URLSearchParams(window.location.search);
+  for (const id of ['group', 'source', 'book', 'state']) {
+    const select = $(`f-${id}`);
+    if (wanted.has(id) && [...select.options].some((o) => o.value === wanted.get(id))) select.value = wanted.get(id);
+  }
   $('filters').addEventListener('change', () => { state.page = 1; load(false); });
   $('filters').addEventListener('submit', (e) => e.preventDefault());
   $('prev').addEventListener('click', () => { state.page -= 1; load(true); });

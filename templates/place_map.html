@@ -1,0 +1,55 @@
+<!-- templates/place_map.html: the Map page (birddog/place_map.py, static/js/place_map.js) -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Map - Birddog</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+{% include '_assets.html' %}
+{% include '_leaflet.html' %}
+  <style>
+    .pm-lede { max-width: 52rem; }
+    .pm-tools { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; align-items: end; margin-bottom: .75rem; }
+    .pm-find { min-width: 16rem; }
+    .pm-map { height: 72vh; min-height: 26rem; border: 1px solid var(--bd-rule); border-radius: .375rem; }
+    .pm-legend { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; color: var(--bd-ink-muted); margin: .5rem 0 0; }
+    .pm-dot { display: inline-block; width: .75rem; height: .75rem; border-radius: 50%; border: 2px solid; vertical-align: -.05rem; margin-right: .3rem; }
+    .pm-dot-community { background: #1f5f57; border-color: #1f5f57; opacity: .6; }
+    .pm-dot-book { background: #8a5a0b; border-color: #8a5a0b; }
+    .pm-dot-rough { background: transparent; border-color: #56625f; border-style: dashed; }
+    .pm-popup h3 { font-size: 1rem; margin: 0 0 .25rem; font-family: var(--bd-font-serif); }
+    .pm-popup p { margin: 0 0 .25rem; }
+    .pm-popup ul { padding-left: 1rem; margin: .25rem 0; max-height: 10rem; overflow: auto; }
+    .pm-status.is-error { color: var(--bd-danger); }
+  </style>
+</head>
+<body class="bd-standalone">
+{% set page_kind = 'Map' %}
+{% include '_page_bar.html' %}
+
+<main class="container bd-page">
+  <h1>Map</h1>
+  <p class="text-muted pm-lede">Communities in the catalog, the places the books name, and Claude's rough positions for places not matched yet.
+    Click a marker for its records; each links back to the book scan or to <a href="/places/confirm">Confirm places</a>.
+    Counts, heatmaps and costs are in the Grafana dashboards.</p>
+
+  <div class="pm-tools">
+    <div class="pm-find">
+      <label for="find" class="form-label">Find a community</label>
+      <input id="find" class="form-control" list="find-list" type="search" autocomplete="off" placeholder="e.g. Zvenyhorodka">
+      <datalist id="find-list"></datalist>
+    </div>
+    <p id="status" class="pm-status small mb-2" role="status" aria-live="polite">Loading the map…</p>
+  </div>
+  <div id="map" class="pm-map" role="region" aria-label="Map of communities and book places. The layer switch is at the top right."></div>
+  <p class="pm-legend small" aria-label="Legend">
+    <span><span class="pm-dot pm-dot-community" aria-hidden="true"></span>community (catalog location)</span>
+    <span><span class="pm-dot pm-dot-book" aria-hidden="true"></span>named in books (bigger: more mentions)</span>
+    <span><span class="pm-dot pm-dot-rough" aria-hidden="true"></span>rough position, not matched yet</span>
+  </p>
+</main>
+
+<script src="{{ url_for('static', filename='js/place_map.js') }}"></script>
+</body>
+</html>

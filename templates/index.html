@@ -40,6 +40,7 @@
         </div>
         {% if user %}
           <span class="bd-nav-sep d-none d-lg-block" aria-hidden="true"></span>
+          <a class="nav-link" id="nav-map-link" href="/map" target="birddog_map">Map<i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
           <a class="nav-link" id="nav-places-link" href="/places/confirm" target="birddog_places">Confirm places<i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
           {% if user.role == 'admin' %}
             <a class="nav-link" id="nav-users-link" href="/users" target="birddog_users">Users<i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
