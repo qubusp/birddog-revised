@@ -44,6 +44,10 @@
     return f;
   }
 
+  function cleanTitle(t) {
+    return (t || '').replace(/^File:/, '').replace(/\.pdf$/i, '').replace(/_/g, ' ');
+  }
+
   function statusText(p) {
     if (p.confirmation_status === 'confirmed') {
       const what = p.confirmed_answer === 'location'
@@ -73,7 +77,8 @@
     const head = el('div', {class: 'd-flex flex-wrap gap-2 align-items-baseline'},
       el('h2', {id: headingId}, el('span', {text: p.normalized || p.as_written})),
       el('span', {class: `badge pc-badge-${p.place_group}`, text: GROUP_LABEL[p.place_group] || p.place_group}),
-      el('span', {class: 'text-muted small', text: `${p.mentions} mention${p.mentions === 1 ? '' : 's'} in ${p.document_ids.length} book${p.document_ids.length === 1 ? '' : 's'}`}));
+      el('span', {class: 'text-muted small', text: `${p.mentions} mention${p.mentions === 1 ? '' : 's'} in this book`}));
+    const bookTitle = el('p', {class: 'pc-book small mb-0'}, 'Book: ', el('cite', {text: cleanTitle(p.title)}));
 
     const facts = el('dl', {class: 'row small mb-0 mt-2'},
       el('dt', {class: 'col-sm-3', text: 'As written'}), el('dd', {class: 'col-sm-9 pc-written', text: p.as_written || '—'}),
@@ -96,10 +101,25 @@
 
     const examples = el('ul', {class: 'pc-examples small', 'aria-label': 'Where it was read'});
     for (const x of p.examples || []) {
-      const title = (x.title || '').replace(/^File:/, '').replace(/_/g, ' ');
       examples.append(el('li', {},
-        el('a', {href: x.page_link, target: '_blank', rel: 'noopener', text: `page ${x.page_no}`}),
-        ` of ${title}`, x.quote ? el('span', {}, ': «', el('span', {class: 'pc-quote', text: x.quote}), '»') : ''));
+        el('a', {href: x.page_link, target: '_blank', rel: 'noopener', text: `Page ${x.page_no}`}),
+        x.quote ? el('span', {}, ': «', el('span', {class: 'pc-quote', text: x.quote}), '»') : ''));
+    }
+
+    // the same name in other books: may be the same place, or another village
+    let others = null;
+    if ((p.other_books || []).length) {
+      others = el('fieldset', {class: 'pc-choices pc-others'},
+        el('legend', {text: 'Same answer for other books that name this place (each still needs its own confirmation)'}));
+      for (const o of p.other_books) {
+        const id = `${name}-also-${o.document_id}`;
+        const where = o.confirmation_status === 'confirmed' ? 'confirmed'
+          : o.confirmation_status === 'pending' ? 'waiting for a 2nd answer' : 'no answers yet';
+        others.append(el('div', {class: 'form-check'},
+          el('input', {class: 'form-check-input', type: 'checkbox', id, value: o.document_id, 'data-also': '1'}),
+          el('label', {class: 'form-check-label small', for: id,
+                       text: `${cleanTitle(o.title)} (${o.mentions} mention${o.mentions === 1 ? '' : 's'}; ${where})`})));
+      }
     }
 
     const choices = el('fieldset', {class: 'pc-choices'}, el('legend', {text: 'Where is it?'}));
@@ -115,7 +135,7 @@
     const otherId = `${name}-other`;
     const otherRadio = el('input', {class: 'form-check-input', type: 'radio', name, id: otherId, value: 'search'});
     const searchInput = el('input', {type: 'search', class: 'form-control form-control-sm mt-1', id: `${name}-q`,
-                                     placeholder: 'Town name in Latin letters, e.g. Kaniv', autocomplete: 'off'});
+                                     placeholder: 'Town name, e.g. Kaniv or Канів', autocomplete: 'off'});
     const searchLabel = el('label', {class: 'visually-hidden', for: `${name}-q`, text: 'Search the location table'});
     const results = el('ul', {class: 'pc-search-results', 'aria-live': 'polite'});
     let timer;
@@ -150,7 +170,7 @@
     const save = el('button', {type: 'submit', class: 'btn btn-primary btn-sm mt-2', text: isAdmin ? 'Save (admin decision)' : 'Save my answer'});
 
     const form = el('form', {class: 'card-body', 'aria-labelledby': headingId},
-      head, facts, current, examples, choices,
+      head, bookTitle, facts, current, examples, choices, others,
       el('label', {for: noteId, class: 'form-label small mt-2 mb-1', text: 'Note (optional)'}), note,
       save, status);
     form.addEventListener('submit', async (event) => {
@@ -168,9 +188,10 @@
       status.classList.remove('is-error');
       status.textContent = 'Saving…';
       try {
+        const also = [...form.querySelectorAll('input[data-also]:checked')].map((c) => Number(c.value));
         const data = await call('POST', '/api/places/decision', {
-          place_key: p.place_key, choice: picked.value,
-          location_id: picked.dataset.locationId || null, note: note.value,
+          place_key: p.place_key, document_id: p.document_id, also_document_ids: also,
+          choice: picked.value, location_id: picked.dataset.locationId || null, note: note.value,
         });
         const r = data.result;
         const merged = {...p, confirmation_status: r.status, confirmed_answer: r.answer,
@@ -179,8 +200,12 @@
           confirmed_location_name: r.location_id === p.auto_location_id ? p.auto_location_name
             : (picked.dataset.locationId === r.location_id ? picked.nextSibling.textContent : r.location_id)};
         let text = 'Saved. ' + statusText(merged);
-        if (r.linked) text += ` Linked to ${r.linked} book${r.linked === 1 ? '' : 's'}.`;
-        if (r.unlinked) text += ` Removed ${r.unlinked} earlier link${r.unlinked === 1 ? '' : 's'}.`;
+        if (r.linked) text += ' Linked to this book.';
+        if (r.unlinked) text += ' Removed the earlier link.';
+        const done = (data.others || []).filter((o) => o.status !== 'error').length;
+        const failed = (data.others || []).filter((o) => o.status === 'error');
+        if (done) text += ` Also recorded for ${done} other book${done === 1 ? '' : 's'}.`;
+        if (failed.length) text += ` Not recorded for ${failed.length}: ${failed[0].message}.`;
         status.textContent = text;
         form.closest('.pc-card').classList.toggle('is-confirmed', r.status === 'confirmed');
       } catch (err) {

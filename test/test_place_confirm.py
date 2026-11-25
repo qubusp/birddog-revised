@@ -77,7 +77,7 @@ def test_decision_is_json_only(app, monkeypatch):
     client = app.test_client()
     _sign_in(client, monkeypatch)
     monkeypatch.setattr(pc, "decide", lambda *a: pytest.fail("must not be called"))
-    resp = client.post("/api/places/decision", data={"place_key": KEY, "choice": "unsure"})
+    resp = client.post("/api/places/decision", data={"place_key": KEY, "document_id": 1, "choice": "unsure"})
     assert resp.status_code == 415
 
 
@@ -89,11 +89,15 @@ def test_decision_passes_role_from_account(app, monkeypatch):
                         {"status": "confirmed", "answer": "location", "location_id": "-1040899",
                          "confirmed_by": "admin", "linked": 3, "unlinked": 0, "votes": {"x": Decimal(1)}})
     resp = client.post("/api/places/decision",
-                       json={"place_key": KEY, "choice": "location", "location_id": " -1040899 ",
+                       json={"place_key": KEY, "document_id": 2567, "also_document_ids": [2562, "2567", 2563],
+                             "choice": "location", "location_id": " -1040899 ",
                              "note": "  page 3 says Kaniv  "})
     assert resp.status_code == 200
     assert resp.json["result"]["linked"] == 3 and resp.json["result"]["votes"] == {"x": 1.0}
-    assert calls == [(KEY, "location", "-1040899", "page 3 says Kaniv", ME.lower(), "admin")]
+    assert len(resp.json["others"]) == 2
+    # one decision per book: the card's book first, then the ticked ones (no repeat)
+    assert calls == [(KEY, d, "location", "-1040899", "page 3 says Kaniv", ME.lower(), "admin")
+                     for d in (2567, 2562, 2563)]
 
 
 def test_decision_errors(app, monkeypatch):
@@ -103,19 +107,43 @@ def test_decision_errors(app, monkeypatch):
     class PgError(Exception):
         pgcode = "22023"
     monkeypatch.setattr(pc, "decide", lambda *a: (_ for _ in ()).throw(PgError("unknown location nope\nCONTEXT")))
-    resp = client.post("/api/places/decision", json={"place_key": KEY, "choice": "location", "location_id": "nope"})
+    resp = client.post("/api/places/decision",
+                       json={"place_key": KEY, "document_id": 1, "choice": "location", "location_id": "nope"})
     assert resp.status_code == 400 and resp.json["message"] == "unknown location nope"
-    resp = client.post("/api/places/decision", json={"place_key": KEY, "choice": "maybe"})
+    resp = client.post("/api/places/decision", json={"place_key": KEY, "document_id": 1, "choice": "maybe"})
     assert resp.status_code == 400
+
+
+def test_other_book_refused_is_reported(app, monkeypatch):
+    client = app.test_client()
+    _sign_in(client, monkeypatch)
+
+    class PgError(Exception):
+        pgcode = "22023"
+
+    def decide(key, doc, *rest):
+        if doc == 9:
+            raise PgError("book 9 does not name this place\nCONTEXT")
+        return {"document_id": doc, "status": "pending"}
+    monkeypatch.setattr(pc, "decide", decide)
+    resp = client.post("/api/places/decision",
+                       json={"place_key": KEY, "document_id": 1, "also_document_ids": [9, 2], "choice": "unsure"})
+    assert resp.status_code == 200
+    assert resp.json["others"] == [{"document_id": 9, "status": "error", "message": "book 9 does not name this place"},
+                                   {"document_id": 2, "status": "pending"}]
 
 
 @pytest.mark.parametrize("body, message", [
     (None, "JSON"),
-    ({"choice": "unsure"}, "place_key"),
-    ({"place_key": "no-bar", "choice": "unsure"}, "place_key"),
-    ({"place_key": KEY, "choice": "yes"}, "Choose"),
-    ({"place_key": KEY, "choice": "location"}, "Pick a location"),
-    ({"place_key": KEY, "choice": "unsure", "note": 5}, "note"),
+    ({"choice": "unsure", "document_id": 1}, "place_key"),
+    ({"place_key": "no-bar", "choice": "unsure", "document_id": 1}, "place_key"),
+    ({"place_key": KEY, "choice": "unsure"}, "Which book"),
+    ({"place_key": KEY, "choice": "unsure", "document_id": True}, "Which book"),
+    ({"place_key": KEY, "choice": "unsure", "document_id": 1, "also_document_ids": "2"}, "list of books"),
+    ({"place_key": KEY, "choice": "unsure", "document_id": 1, "also_document_ids": ["x"]}, "list of books"),
+    ({"place_key": KEY, "choice": "yes", "document_id": 1}, "Choose"),
+    ({"place_key": KEY, "choice": "location", "document_id": 1}, "Pick a location"),
+    ({"place_key": KEY, "choice": "unsure", "document_id": 1, "note": 5}, "note"),
 ])
 def test_decision_args_rejects(body, message):
     with pytest.raises(pc.BadRequest, match=message):
@@ -123,9 +151,10 @@ def test_decision_args_rejects(body, message):
 
 
 def test_decision_args_drops_location_unless_location():
-    assert pc.decision_args({"place_key": KEY, "choice": "not_place", "location_id": "-1"}) == \
-        (KEY, "not_place", None, "")
-    assert len(pc.decision_args({"place_key": KEY, "choice": "unsure", "note": "x" * 5000})[3]) == pc.NOTE_MAX
+    assert pc.decision_args({"place_key": KEY, "document_id": "7", "choice": "not_place", "location_id": "-1"}) == \
+        (KEY, [7], "not_place", None, "")
+    assert len(pc.decision_args({"place_key": KEY, "document_id": 7, "choice": "unsure",
+                                 "note": "x" * 5000})[4]) == pc.NOTE_MAX
 
 
 def test_list_args_defaults():

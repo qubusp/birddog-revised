@@ -21,6 +21,8 @@
     .pc-examples li { margin-bottom: .2rem; }
     .pc-quote { font-family: var(--bd-font-serif); }
     .pc-current { margin: .5rem 0; }
+    .pc-book { color: var(--bd-ink-muted); }
+    .pc-others legend { font-weight: 400; font-size: .95rem; }
     .pc-choices { border: 0; padding: 0; margin: .75rem 0 0; }
     .pc-choices legend { font-size: 1rem; font-weight: 600; margin-bottom: .35rem; }
     .pc-choices .form-check { margin-bottom: .2rem; }
@@ -37,9 +39,9 @@
 
 <main class="container bd-page">
   <h1>Confirm places</h1>
-  <p class="text-muted pc-lede">Places Claude read in the books. Check each against the scan and say where it is.
-    A place is confirmed when two people give the same answer{% if role == 'admin' %}, or when an admin (you) decides{% else %}, or when an admin decides{% endif %};
-    then it is linked to every book it appears in. You can change your answer later.</p>
+  <p class="text-muted pc-lede">Places Claude read in the books, one card per place and book (the same name in two books can be two villages).
+    Check it against the scan and say where it is. It is confirmed for that book when two people give the same answer{% if role == 'admin' %}, or when an admin (you) decides{% else %}, or when an admin decides{% endif %};
+    then it is linked to that book. You can change your answer later.</p>
 
   <form id="filters" class="row g-2 align-items-end pc-filters" aria-label="Filter places">
     <div class="col-sm-6 col-lg-3">

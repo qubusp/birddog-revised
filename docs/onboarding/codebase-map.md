@@ -62,7 +62,8 @@ Modules marked **legacy** are only used when `BIRDDOG_DATABASE_URL` is unset
 |---|---|
 | `service.py` | Flask app: `create_app()`, all HTTP routes, `start_runtime_once()`. Local dev entry point: `python -m birddog.service`. |
 | `application.py` (repo root) | WSGI entry point for gunicorn (`application:application`). |
-| `place_confirm.py` | Blueprint `bp` for the Confirm places page (`/places/confirm`, JSON under `/api/places/...`; template `place_confirm.html`, `static/js/place_confirm.js`), registered by `service.py`. The rule and the linking are SQL: `app.place_decide()`, `views.places__confirmation_status` (migration 024). |
+| `place_confirm.py` | Blueprint `bp` for the Confirm places page (`/places/confirm`, JSON under `/api/places/...`; template `place_confirm.html`, `static/js/place_confirm.js`), registered by `service.py`. Decisions are per place and book; the rule and the linking are SQL: `app.place_decide()`, `views.places__confirmation_status` (migration 024). Cyrillic location searches go through `translit.py`. |
+| `translit.py` | Latin spellings of a Cyrillic place name (Ukrainian BGN and national, Russian; pre-1918 letters) for searching `core.location`. |
 | `excel.py` | Excel export (`/download`). Still runs inside the web app; imported by `service.py` and `runtime.py`. |
 | `core.py` | Page and archive model and scraping logic (its docstring: "Ukraine records archive monitor and scraper"). Imported by `service.py`, `runtime.py`, `significance.py`, `excel.py`. Not reviewed in depth for this pack. |
 | `utility.py` | Shared helpers, for example the multilingual text items (`form_text_item`, `get_text`, `match_text`). Imported almost everywhere. |

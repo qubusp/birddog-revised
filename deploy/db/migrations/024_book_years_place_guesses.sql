@@ -19,16 +19,18 @@
 --     not stored).
 --
 -- (3) Confirming places (birddog/place_confirm.py, page /places/confirm in the
---     web app). Volunteers and admins confirm or correct where a book place
---     is. Every decision is a row in app.place_confirmation. A place
---     (core.place_key) is confirmed when its latest admin decision says so, or
+--     web app). Volunteers and admins confirm or correct where a place named
+--     in a book is, per book: the same name in two books may be two villages.
+--     Every decision is a row in app.place_confirmation for one (place_key,
+--     document_id). It is confirmed when its latest admin decision says so, or
 --     when two different people's latest decisions agree; "can't tell" never
 --     confirms. app.place_decide() records a decision and applies the result in
---     one statement, under a per-place advisory lock: it links the confirmed
---     location to every book the place appears in (core.document_location) and
---     removes links it made earlier for a different answer. app.place_link
---     remembers which links it made, and whether the link already existed (a
---     link it did not create is never removed).
+--     one statement, under an advisory lock on that place and book: it links the
+--     confirmed location to the book (core.document_location) and removes a link
+--     it made earlier for a different answer. app.place_link remembers which
+--     links it made, and whether the link already existed (a link it did not
+--     create is never removed). "Same answer for the other books" on the page
+--     records one decision per ticked book, each needing its own confirmation.
 --
 -- Idempotent (re-run by every scratch test database and --all-migrations).
 
@@ -52,6 +54,7 @@ $$;
 CREATE TABLE IF NOT EXISTS app.place_confirmation (
     id          bigserial PRIMARY KEY,
     place_key   text NOT NULL,             -- core.place_key(normalized, admin_context)
+    document_id bigint NOT NULL,           -- the book the decision is about
     choice      text NOT NULL,             -- location, not_place, unsure
     location_id text,                      -- core.location, for choice = location
     user_email  text NOT NULL,
@@ -61,9 +64,10 @@ CREATE TABLE IF NOT EXISTS app.place_confirmation (
     CONSTRAINT place_confirmation_choice_check CHECK (choice IN ('location', 'not_place', 'unsure')),
     CONSTRAINT place_confirmation_location_check CHECK ((choice = 'location') = (location_id IS NOT NULL))
 );
-CREATE INDEX IF NOT EXISTS place_confirmation_key_idx ON app.place_confirmation (place_key, created_at);
+CREATE INDEX IF NOT EXISTS place_confirmation_key_idx
+    ON app.place_confirmation (place_key, document_id, created_at);
 COMMENT ON TABLE app.place_confirmation IS
-    'Every decision on where a book place is (page /places/confirm); the rule is views.places__confirmation_status.';
+    'Every decision on where a place named in a book is (page /places/confirm), per place and book; the rule is views.places__confirmation_status.';
 
 CREATE TABLE IF NOT EXISTS app.place_link (
     place_key   text NOT NULL,
@@ -76,41 +80,43 @@ CREATE TABLE IF NOT EXISTS app.place_link (
 COMMENT ON TABLE app.place_link IS
     'core.document_location rows made by a place confirmation (app.place_decide), so a changed answer can take them back.';
 
--- the rule: each person's latest decision counts; "unsure" counts for nothing;
--- an admin's latest decision wins; otherwise an answer two people agree on
+-- the rule, per place and book: each person's latest decision counts; "unsure"
+-- counts for nothing; an admin's latest decision wins; otherwise an answer two
+-- people agree on
 CREATE OR REPLACE VIEW views.places__confirmation_status AS
 WITH latest AS (
-    SELECT DISTINCT ON (c.place_key, lower(c.user_email))
-           c.place_key, c.user_role, c.choice, c.location_id, c.created_at
+    SELECT DISTINCT ON (c.place_key, c.document_id, lower(c.user_email))
+           c.place_key, c.document_id, c.user_role, c.choice, c.location_id, c.created_at
     FROM app.place_confirmation c
-    ORDER BY c.place_key, lower(c.user_email), c.created_at DESC, c.id DESC
+    ORDER BY c.place_key, c.document_id, lower(c.user_email), c.created_at DESC, c.id DESC
 ),
 answer AS (
-    SELECT l.place_key, l.user_role, l.created_at,
+    SELECT l.place_key, l.document_id, l.user_role, l.created_at,
            CASE l.choice WHEN 'location' THEN 'location:' || l.location_id ELSE l.choice END AS answer
     FROM latest l
     WHERE l.choice <> 'unsure'
 ),
 admin_pick AS (
-    SELECT DISTINCT ON (a.place_key) a.place_key, a.answer
+    SELECT DISTINCT ON (a.place_key, a.document_id) a.place_key, a.document_id, a.answer
     FROM answer a WHERE a.user_role = 'admin'
-    ORDER BY a.place_key, a.created_at DESC
+    ORDER BY a.place_key, a.document_id, a.created_at DESC
 ),
 votes AS (
-    SELECT a.place_key, a.answer, count(*) AS n, max(a.created_at) AS last_at
-    FROM answer a GROUP BY a.place_key, a.answer
+    SELECT a.place_key, a.document_id, a.answer, count(*) AS n, max(a.created_at) AS last_at
+    FROM answer a GROUP BY a.place_key, a.document_id, a.answer
 ),
 agreed AS (
-    SELECT DISTINCT ON (v.place_key) v.place_key, v.answer
+    SELECT DISTINCT ON (v.place_key, v.document_id) v.place_key, v.document_id, v.answer
     FROM votes v WHERE v.n >= 2
-    ORDER BY v.place_key, v.n DESC, v.last_at DESC
+    ORDER BY v.place_key, v.document_id, v.n DESC, v.last_at DESC
 ),
 keys AS (
-    SELECT c.place_key, count(*) AS decisions, count(DISTINCT lower(c.user_email)) AS people,
-           max(c.created_at) AS last_decision_at
-    FROM app.place_confirmation c GROUP BY c.place_key
+    SELECT c.place_key, c.document_id, count(*) AS decisions,
+           count(DISTINCT lower(c.user_email)) AS people, max(c.created_at) AS last_decision_at
+    FROM app.place_confirmation c GROUP BY c.place_key, c.document_id
 )
 SELECT k.place_key,
+       k.document_id,
        CASE WHEN coalesce(ap.answer, ag.answer) IS NOT NULL THEN 'confirmed' ELSE 'pending' END AS status,
        CASE WHEN ap.answer IS NOT NULL THEN 'admin' WHEN ag.answer IS NOT NULL THEN 'two_people' END AS confirmed_by,
        CASE WHEN coalesce(ap.answer, ag.answer) LIKE 'location:%' THEN 'location'
@@ -119,13 +125,14 @@ SELECT k.place_key,
             THEN substr(coalesce(ap.answer, ag.answer), 10) END AS location_id,
        k.decisions,
        k.people,
-       (SELECT jsonb_object_agg(v.answer, v.n) FROM votes v WHERE v.place_key = k.place_key) AS votes,
+       (SELECT jsonb_object_agg(v.answer, v.n) FROM votes v
+         WHERE v.place_key = k.place_key AND v.document_id = k.document_id) AS votes,
        k.last_decision_at
 FROM keys k
-LEFT JOIN admin_pick ap ON ap.place_key = k.place_key
-LEFT JOIN agreed ag ON ag.place_key = k.place_key;
+LEFT JOIN admin_pick ap ON ap.place_key = k.place_key AND ap.document_id = k.document_id
+LEFT JOIN agreed ag ON ag.place_key = k.place_key AND ag.document_id = k.document_id;
 COMMENT ON VIEW views.places__confirmation_status IS
-    'Per place key: confirmed (by an admin, or two people agreeing) or pending, the answer and its location_id; votes counts each person''s latest decision.';
+    'Per place key and book: confirmed (by an admin, or two people agreeing) or pending, the answer and its location_id; votes counts each person''s latest decision.';
 
 -- (1) years ---------------------------------------------------------------------
 
@@ -261,7 +268,8 @@ JOIN core.document d ON d.id = e.document_id
 LEFT JOIN core.location l ON l.location_id = p.location_id
 LEFT JOIN bk ON bk.document_id = e.document_id
 LEFT JOIN views.places__confirmation_status cs
-       ON cs.place_key = core.place_key(coalesce(nullif(p.normalized, ''), p.as_written), '');
+       ON cs.place_key = core.place_key(coalesce(nullif(p.normalized, ''), p.as_written), '')
+      AND cs.document_id = e.document_id;
 COMMENT ON VIEW views.books__entry_places IS
     'transcribe_books: each place named in a register entry, with its matched core.location and coordinates (null when unmatched); year as in books__entries.';
 
@@ -359,7 +367,7 @@ SELECT pl.document_id,
 FROM place pl
 JOIN core.document d ON d.id = pl.document_id
 LEFT JOIN core.place_guess g ON g.key = pl.place_key
-LEFT JOIN views.places__confirmation_status cs ON cs.place_key = pl.place_key
+LEFT JOIN views.places__confirmation_status cs ON cs.place_key = pl.place_key AND cs.document_id = pl.document_id
 LEFT JOIN core.location cl ON cl.location_id = cs.location_id
 LEFT JOIN LATERAL (
     SELECT jsonb_agg(jsonb_build_object('location_id', x.location_id, 'name', x.name,
@@ -428,33 +436,35 @@ JOIN core.book_entry e ON e.id = p.entry_id;
 COMMENT ON VIEW views.places__mentions IS
     'Every book place as read on a page (read_books and transcribe_books), keyed by core.place_key; the base of the Confirm places page.';
 
--- one row per place key: what to show on a card
+-- one row per place and book: what to show on a card
 CREATE OR REPLACE VIEW views.places__to_confirm AS
 WITH m AS MATERIALIZED (
     SELECT * FROM views.places__mentions WHERE place_key <> '|'
 ),
-auto AS (   -- the automatic match most mentions got
-    SELECT DISTINCT ON (m.place_key) m.place_key, m.location_id, max(m.match_score) AS match_score
+auto AS (   -- the automatic match most of the book's mentions got
+    SELECT DISTINCT ON (m.place_key, m.document_id) m.place_key, m.document_id, m.location_id,
+           max(m.match_score) AS match_score
     FROM m WHERE m.location_id IS NOT NULL
-    GROUP BY m.place_key, m.location_id
-    ORDER BY m.place_key, count(*) DESC, m.location_id
+    GROUP BY m.place_key, m.document_id, m.location_id
+    ORDER BY m.place_key, m.document_id, count(*) DESC, m.location_id
 ),
 agg AS (
     SELECT m.place_key,
+           m.document_id,
            array_agg(DISTINCT m.source ORDER BY m.source)           AS sources,
-           array_agg(DISTINCT m.document_id ORDER BY m.document_id) AS document_ids,
            count(*)                                                 AS mentions,
            string_agg(DISTINCT m.as_written, ' | ')                 AS as_written,
            min(m.normalized)                                        AS normalized,
            min(m.admin_context)                                     AS admin_context
-    FROM m GROUP BY m.place_key
+    FROM m GROUP BY m.place_key, m.document_id
 )
 SELECT a.place_key,
+       a.document_id,
+       d.title,
        CASE WHEN au.location_id IS NULL THEN 'unmatched'
             WHEN 'read_books' = ANY(a.sources) THEN 'matched'
             ELSE 'entry' END                                       AS place_group,
        a.sources,
-       a.document_ids,
        a.mentions,
        a.as_written,
        a.normalized,
@@ -466,15 +476,15 @@ SELECT a.place_key,
        g.longitude                                                 AS guess_longitude,
        g.confidence                                                AS guess_confidence,
        g.basis                                                     AS guess_basis,
-       (SELECT jsonb_agg(x ORDER BY x.has_quote DESC, x.document_id, x.page_no) FROM (
-            SELECT DISTINCT ON (m2.document_id, m2.page_no)
-                   m2.document_id, m2.page_no, d.title, m2.quote, (m2.quote IS NOT NULL) AS has_quote,
+       (SELECT jsonb_agg(x ORDER BY x.has_quote DESC, x.page_no) FROM (
+            SELECT DISTINCT ON (m2.page_no)
+                   m2.page_no, m2.quote, (m2.quote IS NOT NULL) AS has_quote,
                    'https://commons.wikimedia.org/w/index.php?title='
                        || replace(substring(d.url FROM '(File:[^?#]+)$'), ' ', '_')
                        || '&page=' || m2.page_no AS page_link
-            FROM m m2 JOIN core.document d ON d.id = m2.document_id
-            WHERE m2.place_key = a.place_key
-            ORDER BY m2.document_id, m2.page_no, (m2.quote IS NULL)
+            FROM m m2
+            WHERE m2.place_key = a.place_key AND m2.document_id = a.document_id
+            ORDER BY m2.page_no, (m2.quote IS NULL)
             LIMIT 6) x)                                            AS examples,
        (SELECT jsonb_agg(jsonb_build_object('location_id', n.location_id, 'name', n.name,
                                             'province', n.province, 'km', round(n.km::numeric, 1))
@@ -487,6 +497,15 @@ SELECT a.place_key,
                 WHERE l.latitude IS NOT NULL AND l.location_id IS DISTINCT FROM au.location_id
                   AND coalesce(g.latitude, al.latitude) IS NOT NULL
                 ORDER BY 4 LIMIT 3) n)                             AS nearest,
+       (SELECT jsonb_agg(jsonb_build_object(
+                   'document_id', o.document_id, 'title', od.title, 'mentions', o.mentions,
+                   'confirmation_status', coalesce(ocs.status, 'open'),
+                   'confirmed_location_id', ocs.location_id) ORDER BY od.title)
+          FROM agg o
+          JOIN core.document od ON od.id = o.document_id
+          LEFT JOIN views.places__confirmation_status ocs
+                 ON ocs.place_key = o.place_key AND ocs.document_id = o.document_id
+         WHERE o.place_key = a.place_key AND o.document_id <> a.document_id) AS other_books,
        coalesce(cs.status, 'open')                                 AS confirmation_status,
        cs.answer                                                   AS confirmed_answer,
        cs.location_id                                              AS confirmed_location_id,
@@ -495,23 +514,23 @@ SELECT a.place_key,
        cs.votes,
        cs.decisions
 FROM agg a
-LEFT JOIN auto au ON au.place_key = a.place_key
+JOIN core.document d ON d.id = a.document_id
+LEFT JOIN auto au ON au.place_key = a.place_key AND au.document_id = a.document_id
 LEFT JOIN core.location al ON al.location_id = au.location_id
 LEFT JOIN core.place_guess g ON g.key = a.place_key
-LEFT JOIN views.places__confirmation_status cs ON cs.place_key = a.place_key
+LEFT JOIN views.places__confirmation_status cs ON cs.place_key = a.place_key AND cs.document_id = a.document_id
 LEFT JOIN core.location cl ON cl.location_id = cs.location_id;
 COMMENT ON VIEW views.places__to_confirm IS
-    'Confirm places page: one row per place key (place_group unmatched / matched / entry), current match or rough position, 3 nearest locations, examples with page links, confirmation state (open, pending, confirmed).';
+    'Confirm places page: one row per place key and book (place_group unmatched / matched / entry), current match or rough position, 3 nearest locations, examples with page links, the other books naming it, confirmation state (open, pending, confirmed).';
 
--- record a decision and apply the rule, in one statement (autocommit callers):
--- serialized per place key, so two volunteers deciding at once cannot both link
-CREATE OR REPLACE FUNCTION app.place_decide(p_key text, p_choice text, p_location_id text,
-                                            p_email text, p_role text, p_note text DEFAULT NULL)
+-- record a decision on one place in one book and apply the rule, in one
+-- statement (autocommit callers), serialized per place and book
+CREATE OR REPLACE FUNCTION app.place_decide(p_key text, p_document_id bigint, p_choice text,
+                                            p_location_id text, p_email text, p_role text,
+                                            p_note text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     st       record;
-    docs     bigint[] := '{}';
-    d        bigint;
     r        record;
     n        int;
     linked   int := 0;
@@ -526,26 +545,27 @@ BEGIN
     IF p_choice = 'location' AND NOT EXISTS (SELECT 1 FROM core.location WHERE location_id = p_location_id) THEN
         RAISE EXCEPTION 'unknown location %', p_location_id USING ERRCODE = '22023';
     END IF;
-    PERFORM pg_advisory_xact_lock(hashtextextended('place_confirm:' || p_key, 0));
+    IF NOT EXISTS (SELECT 1 FROM views.places__mentions m
+                   WHERE m.place_key = p_key AND m.document_id = p_document_id) THEN
+        RAISE EXCEPTION 'book % does not name this place', p_document_id USING ERRCODE = '22023';
+    END IF;
+    PERFORM pg_advisory_xact_lock(hashtextextended('place_confirm:' || p_key || '#' || p_document_id, 0));
 
-    INSERT INTO app.place_confirmation (place_key, choice, location_id, user_email, user_role, note)
-    VALUES (p_key, p_choice, CASE WHEN p_choice = 'location' THEN p_location_id END,
+    INSERT INTO app.place_confirmation (place_key, document_id, choice, location_id, user_email, user_role, note)
+    VALUES (p_key, p_document_id, p_choice, CASE WHEN p_choice = 'location' THEN p_location_id END,
             lower(p_email), p_role, nullif(btrim(coalesce(p_note, '')), ''));
 
-    SELECT * INTO st FROM views.places__confirmation_status WHERE place_key = p_key;
-    IF st.status = 'confirmed' AND st.answer = 'location' THEN
-        SELECT coalesce(array_agg(DISTINCT m.document_id), '{}') INTO docs
-        FROM views.places__mentions m WHERE m.place_key = p_key;
-    END IF;
+    SELECT * INTO st FROM views.places__confirmation_status
+    WHERE place_key = p_key AND document_id = p_document_id;
 
-    -- take back links this place made for another answer
+    -- take back a link this place made in this book for another answer
     FOR r IN DELETE FROM app.place_link l
-             WHERE l.place_key = p_key
-               AND (st.location_id IS DISTINCT FROM l.location_id OR NOT l.document_id = ANY(docs))
+             WHERE l.place_key = p_key AND l.document_id = p_document_id
+               AND (st.status <> 'confirmed' OR st.location_id IS DISTINCT FROM l.location_id)
              RETURNING l.document_id, l.location_id, l.created
     LOOP
         IF r.created THEN
-            -- another confirmed place still wants this link: hand it the ownership
+            -- another confirmed place in this book still wants the link: hand it over
             UPDATE app.place_link o SET created = true
             WHERE (o.place_key, o.document_id, o.location_id) IN (
                 SELECT o2.place_key, o2.document_id, o2.location_id FROM app.place_link o2
@@ -559,21 +579,21 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- link the confirmed location to every book the place is in
-    FOREACH d IN ARRAY docs LOOP
-        IF NOT EXISTS (SELECT 1 FROM app.place_link l
-                       WHERE l.place_key = p_key AND l.document_id = d AND l.location_id = st.location_id) THEN
-            INSERT INTO core.document_location (document_id, location_id)
-            VALUES (d, st.location_id) ON CONFLICT DO NOTHING;
-            GET DIAGNOSTICS n = ROW_COUNT;
-            INSERT INTO app.place_link (place_key, document_id, location_id, created)
-            VALUES (p_key, d, st.location_id, n > 0);
-            linked := linked + n;
-        END IF;
-    END LOOP;
+    -- link the confirmed location to this book
+    IF st.status = 'confirmed' AND st.answer = 'location' AND NOT EXISTS (
+            SELECT 1 FROM app.place_link l WHERE l.place_key = p_key AND l.document_id = p_document_id
+              AND l.location_id = st.location_id) THEN
+        INSERT INTO core.document_location (document_id, location_id)
+        VALUES (p_document_id, st.location_id) ON CONFLICT DO NOTHING;
+        GET DIAGNOSTICS n = ROW_COUNT;
+        INSERT INTO app.place_link (place_key, document_id, location_id, created)
+        VALUES (p_key, p_document_id, st.location_id, n > 0);
+        linked := linked + n;
+    END IF;
 
     RETURN jsonb_build_object(
         'place_key', p_key,
+        'document_id', p_document_id,
         'status', coalesce(st.status, 'open'),
         'answer', st.answer,
         'location_id', st.location_id,
@@ -582,9 +602,9 @@ BEGIN
         'linked', linked,
         'unlinked', unlinked);
 END $$;
-COMMENT ON FUNCTION app.place_decide(text, text, text, text, text, text) IS
-    'Record a place decision (Confirm places page) and apply views.places__confirmation_status: link or unlink core.document_location, tracked in app.place_link.';
-REVOKE ALL ON FUNCTION app.place_decide(text, text, text, text, text, text) FROM PUBLIC;
+COMMENT ON FUNCTION app.place_decide(text, bigint, text, text, text, text, text) IS
+    'Record a decision on a place in one book (Confirm places page) and apply views.places__confirmation_status: link or unlink core.document_location for that book, tracked in app.place_link.';
+REVOKE ALL ON FUNCTION app.place_decide(text, bigint, text, text, text, text, text) FROM PUBLIC;
 
 -- grants -------------------------------------------------------------------------
 DO $$
@@ -613,6 +633,6 @@ BEGIN
         EXECUTE 'GRANT SELECT, INSERT, DELETE ON core.document_location TO birddog_web';
         EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON app.place_confirmation, app.place_link TO birddog_web';
         EXECUTE 'GRANT USAGE, SELECT ON SEQUENCE app.place_confirmation_id_seq TO birddog_web';
-        EXECUTE 'GRANT EXECUTE ON FUNCTION app.place_decide(text, text, text, text, text, text) TO birddog_web';
+        EXECUTE 'GRANT EXECUTE ON FUNCTION app.place_decide(text, bigint, text, text, text, text, text) TO birddog_web';
     END IF;
 END $$;
