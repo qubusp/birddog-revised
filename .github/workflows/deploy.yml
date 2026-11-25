@@ -1,0 +1,190 @@
+# Deploys Birddog to the data box and/or the apps box with the Ansible
+# playbooks in deploy/ansible (README.md there). Manual only: Actions >
+# Deploy > Run workflow. dry_run (the default) runs the playbooks in check
+# mode: nothing on the servers changes.
+#
+# Jobs: test -> deploy-data -> deploy-apps (each box job only when the target
+# includes it; apps waits for data when target=both, and is skipped if data
+# failed). A real run that restarts postgres/Airflow or re-runs the role
+# scripts uses the environment production-restart, which needs the owner's
+# approval; everything else uses production.
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which box
+        type: choice
+        options: [both, data, apps]
+        default: both
+      dry_run:
+        description: Dry run (check mode; changes nothing)
+        type: boolean
+        default: true
+      restart_airflow:
+        description: "Data box: rebuild the Airflow image, run airflow-init, recreate airflow-* (owner's OK)"
+        type: boolean
+        default: false
+      restart_postgres:
+        description: "Data box: recreate postgres if its config or image changed (owner's OK)"
+        type: boolean
+        default: false
+      init_roles:
+        description: "Data box: re-run the role scripts db/init/02,03,05,06 (new box, or a changed role password)"
+        type: boolean
+        default: false
+      all_migrations:
+        description: "Data box: re-apply every migration, not only new and changed ones"
+        type: boolean
+        default: false
+      baseline_migrations:
+        description: "Data box: record pending migrations as applied WITHOUT running them"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# one deploy at a time; a second one waits instead of cancelling the first
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest pyyaml
+      # The same selection as .github/workflows/ci.yml (keep them in step):
+      # tests needing Postgres, Airflow or other services skip themselves;
+      # legacy tests that need NocoDB, DynamoDB or the live wiki are left out.
+      - name: Unit tests
+        env:
+          BIRDDOG_USE_LOCAL_CACHE: "True"
+        run: |
+          mkdir -p var
+          python -m pytest test -q -p no:cacheprovider \
+            --ignore=test/test_database.py \
+            --ignore=test/test_location_extraction.py \
+            --ignore=test/test_location_manager.py \
+            --deselect test/test_core.py::Test::test_ArchiveWatcher \
+            --deselect test/test_store.py::TestStores::test_dynamodb_batch_parallelism_correctness \
+            --deselect test/test_store.py::TestStores::test_key_value_store \
+            --deselect test/test_store.py::TestStores::test_string_queue \
+            --deselect test/test_updater.py::TestSetDocLookupFields \
+            --deselect test/test_updater.py::TestOwnerIds \
+            --deselect test/test_updater.py::TestSelectOwningPage
+
+  deploy-data:
+    name: deploy-data
+    needs: test
+    if: inputs.target == 'data' || inputs.target == 'both'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: ${{ (!inputs.dry_run && (inputs.restart_airflow || inputs.restart_postgres || inputs.init_roles)) && 'production-restart' || 'production' }}
+    steps:
+      # full history: the playbook checks that the commit is on a remote branch
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/ansible-setup
+        with:
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+      - name: Summary header
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          FLAGS: >-
+            restart_airflow=${{ inputs.restart_airflow }} restart_postgres=${{ inputs.restart_postgres }}
+            init_roles=${{ inputs.init_roles }} all_migrations=${{ inputs.all_migrations }}
+            baseline_migrations=${{ inputs.baseline_migrations }}
+        run: |
+          {
+            echo "## Data box: $([ "$DRY_RUN" = true ] && echo 'dry run' || echo 'deploy') of \`${GITHUB_SHA::12}\` ($GITHUB_REF_NAME)"
+            echo
+            echo "Flags: \`$FLAGS\`"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: ansible-playbook deploy-data.yml
+        working-directory: deploy/ansible
+        env:
+          DATA_BOX_HOST: ${{ vars.DATA_BOX_HOST }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          RESTART_AIRFLOW: ${{ inputs.restart_airflow }}
+          RESTART_POSTGRES: ${{ inputs.restart_postgres }}
+          INIT_ROLES: ${{ inputs.init_roles }}
+          ALL_MIGRATIONS: ${{ inputs.all_migrations }}
+          BASELINE_MIGRATIONS: ${{ inputs.baseline_migrations }}
+          ANSIBLE_FORCE_COLOR: "1"
+        run: |
+          set -o pipefail
+          check=(); [ "$DRY_RUN" = true ] && check=(--check --diff)
+          ansible-playbook deploy-data.yml "${check[@]}" \
+            -e restart_airflow="$RESTART_AIRFLOW" -e restart_postgres="$RESTART_POSTGRES" \
+            -e init_roles="$INIT_ROLES" -e all_migrations="$ALL_MIGRATIONS" \
+            -e baseline_migrations="$BASELINE_MIGRATIONS" \
+            -e summary_file="$GITHUB_STEP_SUMMARY" 2>&1 | tee "$RUNNER_TEMP/ansible.log"
+      - name: Log tail in the summary (failure)
+        if: failure()
+        run: |
+          [ -f "$RUNNER_TEMP/ansible.log" ] || exit 0
+          { echo '<details><summary>last 60 lines of the log</summary>'; echo; echo '```'
+            tail -60 "$RUNNER_TEMP/ansible.log" | sed 's/\x1b\[[0-9;]*m//g'
+            echo '```'; echo '</details>'; } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-apps:
+    name: deploy-apps
+    needs: [test, deploy-data]
+    # after deploy-data when target=both; skipped when that failed
+    if: >-
+      always() && needs.test.result == 'success'
+      && (needs.deploy-data.result == 'success' || needs.deploy-data.result == 'skipped')
+      && (inputs.target == 'apps' || inputs.target == 'both')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/ansible-setup
+        with:
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+      - name: Summary header
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          {
+            echo "## Apps box: $([ "$DRY_RUN" = true ] && echo 'dry run' || echo 'deploy') of \`${GITHUB_SHA::12}\` ($GITHUB_REF_NAME)"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: ansible-playbook deploy-apps.yml
+        working-directory: deploy/ansible
+        env:
+          APPS_BOX_HOST: ${{ vars.APPS_BOX_HOST }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          ANSIBLE_FORCE_COLOR: "1"
+        run: |
+          set -o pipefail
+          check=(); [ "$DRY_RUN" = true ] && check=(--check --diff)
+          ansible-playbook deploy-apps.yml "${check[@]}" \
+            -e summary_file="$GITHUB_STEP_SUMMARY" 2>&1 | tee "$RUNNER_TEMP/ansible.log"
+      - name: Log tail in the summary (failure)
+        if: failure()
+        run: |
+          [ -f "$RUNNER_TEMP/ansible.log" ] || exit 0
+          { echo '<details><summary>last 60 lines of the log</summary>'; echo; echo '```'
+            tail -60 "$RUNNER_TEMP/ansible.log" | sed 's/\x1b\[[0-9;]*m//g'
+            echo '```'; echo '</details>'; } >> "$GITHUB_STEP_SUMMARY"

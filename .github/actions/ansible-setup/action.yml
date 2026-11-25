@@ -1,0 +1,39 @@
+# Shared by deploy.yml and deploy-check.yml: Python, ansible-core and the
+# collections, rsync, and the deploy ssh key. Host keys come only from
+# DEPLOY_KNOWN_HOSTS; an unknown or changed host key stops the run.
+name: Ansible deploy setup
+description: Install Ansible and set up ssh to the Birddog boxes
+inputs:
+  ssh-key:
+    description: private key authorized for the deploy user on both boxes (DEPLOY_SSH_KEY)
+    required: true
+  known-hosts:
+    description: ssh-keyscan of both boxes (DEPLOY_KNOWN_HOSTS)
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install Ansible and rsync
+      shell: bash
+      run: |
+        command -v rsync >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q rsync; }
+        python -m pip install -q 'ansible-core==2.21.3'
+        ansible-galaxy collection install -r deploy/ansible/requirements.yml
+        ansible --version | head -1
+        rsync --version | head -1
+
+    - name: ssh key and known hosts
+      shell: bash
+      env:
+        SSH_KEY: ${{ inputs.ssh-key }}
+        KNOWN_HOSTS: ${{ inputs.known-hosts }}
+      run: |
+        install -d -m 700 ~/.ssh
+        (umask 077; printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519)
+        printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+        chmod 644 ~/.ssh/known_hosts
+        (umask 077; printf 'Host *\n  IdentityFile ~/.ssh/id_ed25519\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n' > ~/.ssh/config)
