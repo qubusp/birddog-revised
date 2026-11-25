@@ -19,9 +19,16 @@ locally `127.0.0.1:8085` (tunnel: `ssh -N -L 8085:127.0.0.1:8085 administrator@1
   data box's `.env`). Catalogs `raw`, `core` and `views`: tables, columns, foreign
   keys. It cannot read `app`. Its own role because the plugin reads every
   database's size, which needs `pg_read_all_stats`.
-- **Airflow**: Marmot's Airflow plugin speaks only the Airflow 2 API (`/api/v1`),
-  so it does not work with our Airflow 3. Lineage comes from Airflow's OpenLineage
-  provider instead (already in the image), posting to
+- **Airflow connector** (Marmot schedule `airflow`, hourly): Marmot's Airflow
+  plugin speaks only the Airflow 2 API (`/api/v1`), which Airflow 3 removed, so it
+  points at `http://birddog-web:8000/airflow-v1`. That is `birddog/airflow_v1.py`
+  in the web app, which answers the plugin's calls from Airflow 3's `/api/v2`
+  (internal host only). Login: the read-only Airflow user `marmot` (Viewer). It
+  brings in every DAG, its tasks and 7 days of runs, and links DAGs to the
+  Postgres tables they write and read (Airflow assets such as
+  `postgres://postgres:5432/birddog/core/document`).
+- **Airflow OpenLineage**: runs also reach Marmot as OpenLineage events from
+  Airflow's provider (already in the image), posting to
   `https://catalog.<PUBLIC_DOMAIN>/api/v1/lineage` with a Marmot API key (the data
   box reaches the apps box's Marmot only through Caddy). Settings:
   `AIRFLOW__OPENLINEAGE__NAMESPACE` and `AIRFLOW__OPENLINEAGE__TRANSPORT` in the
