@@ -8,15 +8,23 @@ this module reuses (page images, ask, the re-read rule, place matching):
   transcribe  Sonnet transcribes every page, TRANSCRIBE_PAGES_PER_CALL pages
               per call: the full text as written, one record per register
               entry (people, dates, places) and the place list of read_books.
-              Pages Sonnet marks illegible are transcribed again by Opus
-              (books._hard_page). Stored per page and model in
+              Opus transcribes a page again, with NAMES_PROMPT added, when
+              Sonnet marked it illegible or left its names unreadable
+              (needs_reread). Stored per page and model in
               core.book_transcript as they finish, so a stopped book resumes.
   index       Flattens each page's best reading (Opus over Sonnet) into
               core.book_entry and core.book_entry_place, matching entry places
               to core.location. No API calls; rebuilt per book on each run.
 
 The queue is core.book_transcript_queue, separate from core.book_read, so the
-place pilot's rows stay as they are. A run stops transcribing once it has spent
+place pilot's rows stay as they are. Status reread_names (DAG param
+reread_names) re-runs only the Opus step on a finished book's pages whose best
+reading still needs it and was not yet read with NAMES_PROMPT; then index.
+
+Why the names rule: in the pilot Sonnet left 332 of 2,315 entries (14%) with
+no readable name. On a test page (book 2581, page 3) Sonnet read 0 of 11 names
+at every resolution, and Opus with NAMES_PROMPT read 11 of 11 on the same
+1600 px Commons render ($0.14): the model and the prompt matter, not the scan. A run stops transcribing once it has spent
 its budget; the next run resumes.
 
 Output is much longer than the place reading (362 output tokens per page in the
@@ -34,6 +42,14 @@ _logger = logging.getLogger(__name__)
 TRANSCRIBE_PAGES_PER_CALL = 2   # output per page is ~10x the place reading's
 TRANSCRIBE_MAX_TOKENS = 64000   # streamed; a dense two-page call stays well under
 YEAR_MIN, YEAR_MAX = 1700, 1950
+
+# Opus re-reads a page for its names when at least NAMES_REREAD_MIN_ENTRIES of
+# its entries, or at least NAMES_REREAD_MIN_SHARE of them, have no readable
+# person. On the pilot's 380 pages this picks 63 (17%), holding 291 of the 332
+# unreadable entries; "any unreadable entry" would pick 104 (27%).
+NAMES_REREAD_MIN_ENTRIES = 2
+NAMES_REREAD_MIN_SHARE = 0.5
+NAMES_PROMPT_KEY = "names"      # core.book_transcript.prompt for pages read with it
 
 EVENTS = ["birth", "marriage", "death", "divorce", "other"]
 
@@ -125,14 +141,25 @@ your confidence; once per distinct role.
 Mark a page illegible when most of it cannot be read. Answer in the required JSON, one \
 entry per page shown, using the page numbers given."""
 
+# added for the Opus re-read (the experiment on book 2581: 11 of 11 names, Sonnet 0)
+NAMES_PROMPT = """
+
+Names matter most. For every name, give your BEST reading even when unsure, marking each \
+uncertain letter or word with ? (e.g. "Сав? Хаим?въ"), instead of [...]. Use [...] only \
+for a word you cannot read at all. Many registers repeat each entry in Hebrew or Yiddish \
+on the facing page: use it to check and complete the Russian names, and give the Hebrew \
+form in the entry's note."""
+
 
 # --- Claude --------------------------------------------------------------------
 
-def transcribe_pages(title, page_numbers, model, effort):
-    """One call over a few pages. Returns ({page_no: result}, tokens_in, tokens_out, $)."""
+def transcribe_pages(title, page_numbers, model, effort, names=False):
+    """One call over a few pages. Returns ({page_no: result}, tokens_in, tokens_out, $).
+    `names` adds NAMES_PROMPT (best reading of every name, uncertain letters marked ?)."""
     images = [(p, books.page_image(title, p)) for p in page_numbers]
+    prompt = TRANSCRIBE_PROMPT.format(title=title) + (NAMES_PROMPT if names else "")
     parsed, tokens_in, tokens_out, dollars = books.ask(
-        model, books._pages_content(images, TRANSCRIBE_PROMPT.format(title=title)),
+        model, books._pages_content(images, prompt),
         TRANSCRIBE_SCHEMA, effort=effort, max_tokens=TRANSCRIBE_MAX_TOKENS, stream=True)
     by_page = {}
     for entry in parsed.get("pages", []):
@@ -142,6 +169,56 @@ def transcribe_pages(title, page_numbers, model, effort):
         by_page.setdefault(p, {"page": p, "illegible": True, "text": "", "entries": [],
                                "places": [], "notes": "not returned"})
     return by_page, tokens_in, tokens_out, dollars
+
+
+# --- which pages Opus re-reads (pure) ------------------------------------------------
+
+_UNREADABLE = re.compile(r"\s*((\[(?:\.\.\.|…)\]|\?+)\s*)*")
+
+
+def unreadable_name(person):
+    """True when nothing of the name was read: empty, or only [...] gaps or ?.
+    "Сура?" and "Аврум Бей?[...]" are readable (uncertain). Same rule as
+    core.name_unreadable() (migration 026)."""
+    return _UNREADABLE.fullmatch(person if isinstance(person, str) else "") is not None
+
+
+def unreadable_entries(result):
+    """(entries, entries whose person is unreadable) on one page reading."""
+    entries = [e for e in (result.get("entries") or []) if isinstance(e, dict)]
+    return len(entries), sum(1 for e in entries if unreadable_name(e.get("person")))
+
+
+def names_unreadable(result):
+    n, bad = unreadable_entries(result)
+    return bad >= NAMES_REREAD_MIN_ENTRIES or (n > 0 and bad / n >= NAMES_REREAD_MIN_SHARE)
+
+
+def needs_reread(result):
+    """Does Opus transcribe this page again? Illegible (books._hard_page), or
+    its names came back unreadable (names_unreadable)."""
+    return bool(books._hard_page(result) or names_unreadable(result))
+
+
+def reread_pages(page_results, rerun=False):
+    """Pages for the Opus step, from {page_no: {model: {illegible, entries, prompt}}}.
+    Normal run: Sonnet's reading needs it and Opus has not read the page.
+    Re-run (rerun=True): the best reading still needs it and Opus has not yet
+    read the page with NAMES_PROMPT."""
+    pages = []
+    for page_no, readings in sorted(page_results.items()):
+        opus = readings.get(books.REREAD_MODEL)
+        if rerun:
+            if opus and opus.get("prompt") == NAMES_PROMPT_KEY:
+                continue
+            best = opus or readings.get(books.READ_MODEL) or {}
+        else:
+            if opus:
+                continue
+            best = readings.get(books.READ_MODEL) or {}
+        if needs_reread(best):
+            pages.append(page_no)
+    return pages
 
 
 # --- flattening (pure) ------------------------------------------------------------
@@ -258,6 +335,19 @@ def enqueue(limit=0, document_ids=()):
     return n
 
 
+def enqueue_names_reread(document_ids):
+    """Put finished books back for the names re-run (status reread_names).
+    Books not transcribed yet (no queue row, or pending/transcribing/failed)
+    are left alone: a normal run already applies the names rule."""
+    if not document_ids:
+        return 0
+    with pg.connect() as conn, conn.cursor() as cur:
+        cur.execute("""UPDATE core.book_transcript_queue SET status = 'reread_names', error = NULL
+                       WHERE document_id = ANY(%s) AND status IN ('transcribed', 'done', 'reread_names')""",
+                    (list(document_ids),))
+        return cur.rowcount
+
+
 def queued(status):
     """[(document_id, url, page_count)] in `status`, oldest first."""
     with pg.connect() as conn, conn.cursor() as cur:
@@ -282,34 +372,36 @@ def update_queue(doc_id, run_id=None, add_tokens=(0, 0, 0.0), **columns):
                     values + [doc_id])
 
 
-def save_transcripts(doc_id, model, by_page, tokens_in, tokens_out, dollars):
+def save_transcripts(doc_id, model, by_page, tokens_in, tokens_out, dollars, prompt=None):
     """Store one call's pages; the call's cost is split evenly across them."""
     n = max(1, len(by_page))
     with pg.connect() as conn, conn.cursor() as cur:
         for page_no, r in by_page.items():
             cur.execute("""
                 INSERT INTO core.book_transcript (document_id, page_no, model, illegible, text, entries,
-                                                  places, notes, input_tokens, output_tokens, cost_usd)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                                  places, notes, input_tokens, output_tokens, cost_usd,
+                                                  prompt)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (document_id, page_no, model) DO UPDATE
                 SET illegible = EXCLUDED.illegible, text = EXCLUDED.text, entries = EXCLUDED.entries,
                     places = EXCLUDED.places, notes = EXCLUDED.notes,
                     input_tokens = EXCLUDED.input_tokens, output_tokens = EXCLUDED.output_tokens,
-                    cost_usd = EXCLUDED.cost_usd, created_at = now()""",
+                    cost_usd = EXCLUDED.cost_usd, prompt = EXCLUDED.prompt, created_at = now()""",
                         (doc_id, page_no, model, bool(r.get("illegible")), r.get("text") or "",
                          json.dumps(r.get("entries") or [], ensure_ascii=False),
                          json.dumps(r.get("places") or [], ensure_ascii=False), r.get("notes"),
-                         tokens_in // n, tokens_out // n, round(dollars / n, 4)))
+                         tokens_in // n, tokens_out // n, round(dollars / n, 4), prompt))
 
 
 def transcripts(doc_id):
-    """{page_no: {model: {"illegible", "entries", ...}}} (text left out: not needed to decide)."""
+    """{page_no: {model: {"illegible", "entries", "prompt"}}} (text left out: not needed to decide)."""
     with pg.connect() as conn, conn.cursor() as cur:
-        cur.execute("""SELECT page_no, model, illegible, entries FROM core.book_transcript
+        cur.execute("""SELECT page_no, model, illegible, entries, prompt FROM core.book_transcript
                        WHERE document_id = %s""", (doc_id,))
         out = {}
-        for page_no, model, illegible, entries in cur.fetchall():
-            out.setdefault(page_no, {})[model] = {"illegible": illegible, "entries": entries}
+        for page_no, model, illegible, entries, prompt in cur.fetchall():
+            out.setdefault(page_no, {})[model] = {"illegible": illegible, "entries": entries,
+                                                  "prompt": prompt}
         return out
 
 
@@ -340,38 +432,47 @@ def save_entries(doc_id, rows):
 # --- the two steps, over the queue -------------------------------------------------
 
 def transcribe_queued(run_id, budget_usd):
-    """Transcribe queued books (and resume interrupted ones) until done or out of budget."""
-    summary = {"books": 0, "pages": 0, "reread_pages": 0, "failed": 0, "spent_usd": 0.0,
-               "stopped_for_budget": False}
+    """Transcribe queued books (and resume interrupted ones), then run the
+    names re-run for books in reread_names, until done or out of budget."""
+    summary = {"books": 0, "pages": 0, "reread_pages": 0, "names_books": 0, "failed": 0,
+               "spent_usd": 0.0, "stopped_for_budget": False}
 
     # this run's spend, counted here: a resumed book's queue row also holds
     # what earlier runs spent on it
-    def chunks(doc_id, title, pages, model, effort):
+    def chunks(doc_id, title, pages, model, effort, names=False):
         for i in range(0, len(pages), TRANSCRIBE_PAGES_PER_CALL):
             if summary["spent_usd"] >= budget_usd:
                 raise books.BudgetExhausted()
             chunk = pages[i:i + TRANSCRIBE_PAGES_PER_CALL]
-            by_page, t_in, t_out, dollars = transcribe_pages(title, chunk, model, effort)
-            save_transcripts(doc_id, model, by_page, t_in, t_out, dollars)
+            by_page, t_in, t_out, dollars = transcribe_pages(title, chunk, model, effort, names=names)
+            save_transcripts(doc_id, model, by_page, t_in, t_out, dollars,
+                             prompt=NAMES_PROMPT_KEY if names else None)
             update_queue(doc_id, run_id, (t_in, t_out, dollars))
             summary["spent_usd"] = round(summary["spent_usd"] + dollars, 4)
             yield len(chunk)
 
-    for doc_id, url, page_count in queued(["pending", "transcribing"]):
+    def opus_pass(doc_id, title, rerun):
+        pages = reread_pages(transcripts(doc_id), rerun=rerun)
+        for n in chunks(doc_id, title, pages, books.REREAD_MODEL, "high", names=True):
+            summary["reread_pages"] += n
+
+    rerun_ids = {d for d, _, _ in queued(["reread_names"])}
+    for doc_id, url, page_count in queued(["pending", "transcribing", "reread_names"]):
         try:
-            update_queue(doc_id, run_id, status="transcribing", error=None)
             title = books.file_title(url)
-            done = transcripts(doc_id)
-            todo = [p for p in range(1, page_count + 1) if books.READ_MODEL not in done.get(p, {})]
-            for n in chunks(doc_id, title, todo, books.READ_MODEL, "medium"):
-                summary["pages"] += n
-            done = transcripts(doc_id)
-            hard = [p for p, r in sorted(done.items())
-                    if books.REREAD_MODEL not in r and books._hard_page(r.get(books.READ_MODEL, {}))]
-            for n in chunks(doc_id, title, hard, books.REREAD_MODEL, "high"):
-                summary["reread_pages"] += n
+            if doc_id in rerun_ids:
+                update_queue(doc_id, run_id, error=None)   # stays reread_names until done, so it resumes
+                opus_pass(doc_id, title, rerun=True)
+                summary["names_books"] += 1
+            else:
+                update_queue(doc_id, run_id, status="transcribing", error=None)
+                done = transcripts(doc_id)
+                todo = [p for p in range(1, page_count + 1) if books.READ_MODEL not in done.get(p, {})]
+                for n in chunks(doc_id, title, todo, books.READ_MODEL, "medium"):
+                    summary["pages"] += n
+                opus_pass(doc_id, title, rerun=False)
+                summary["books"] += 1
             update_queue(doc_id, run_id, status="transcribed")
-            summary["books"] += 1
         except books.BudgetExhausted:
             summary["stopped_for_budget"] = True
             _logger.info("run %s reached its $%.2f budget; book %s resumes next run",

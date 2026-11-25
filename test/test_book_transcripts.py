@@ -101,11 +101,61 @@ class RereadRuleTests(unittest.TestCase):
         self.assertFalse(books._hard_page({"illegible": False, "entries": [ENTRY]}))
 
 
+def _entry(person):
+    return dict(ENTRY, person=person)
+
+
+class NamesRuleTests(unittest.TestCase):
+    def test_unreadable_name(self):
+        for person in ("", "   ", "[...]", "[…]", "[...] [...]", " [...]  ", "?", "[...] ?", None, 5):
+            self.assertTrue(bt.unreadable_name(person), repr(person))
+        for person in ("Сура?", "Аврум Бей?[...]", "[...] Мордка", "חיה [...] בת ישראל", "Лейба"):
+            self.assertFalse(bt.unreadable_name(person), person)
+
+    def test_threshold(self):
+        ok, bad = _entry("Лейба"), _entry("[...]")
+        self.assertFalse(bt.names_unreadable({"entries": []}))
+        self.assertFalse(bt.names_unreadable({"entries": [ok, ok, ok, bad]}))     # 1 of 4
+        self.assertTrue(bt.names_unreadable({"entries": [ok, ok, ok, bad, bad]}))  # 2 entries
+        self.assertTrue(bt.names_unreadable({"entries": [bad]}))                   # 1 of 1
+        self.assertTrue(bt.names_unreadable({"entries": [ok, bad]}))               # half
+        self.assertTrue(bt.needs_reread({"illegible": True, "entries": []}))
+
+    def test_reread_pages(self):
+        ok, bad = _entry("Лейба"), _entry("")
+        pages = {
+            1: {SONNET: {"entries": [ok]}},                                       # fine
+            2: {SONNET: {"entries": [bad, bad]}},                                 # names
+            3: {SONNET: {"illegible": True, "entries": []}},                      # illegible
+            4: {SONNET: {"entries": [bad]}, OPUS: {"entries": [bad], "prompt": None}},   # old Opus read
+            5: {SONNET: {"entries": [bad]}, OPUS: {"entries": [bad], "prompt": "names"}},
+            6: {SONNET: {"entries": [bad]}, OPUS: {"entries": [ok], "prompt": None}},    # Opus fixed it
+        }
+        self.assertEqual(bt.reread_pages(pages), [2, 3])
+        self.assertEqual(bt.reread_pages(pages, rerun=True), [2, 3, 4])
+
+    def test_names_prompt(self):
+        self.assertIn("BEST reading", bt.NAMES_PROMPT)
+        self.assertIn("Hebrew or Yiddish", bt.NAMES_PROMPT)
+
+    def test_enqueue_task_modes(self):
+        from unittest import mock
+        from birddog import dag_tasks_books
+        with mock.patch.object(bt, "enqueue_names_reread", return_value=6) as rr, \
+             mock.patch.object(bt, "enqueue", return_value=0) as normal:
+            self.assertEqual(dag_tasks_books.enqueue_transcripts("0", "2581, 2575;2580", "True"), 6)
+            rr.assert_called_once_with([2581, 2575, 2580])
+            normal.assert_not_called()
+            dag_tasks_books.enqueue_transcripts("3", "", "False")
+            normal.assert_called_once_with(3, [])
+
+
 class DagTests(unittest.TestCase):
     def test_transcribe_dag_definition(self):
         spec = yaml.safe_load((Path(__file__).resolve().parent.parent / "dags/yaml/books.yml").read_text())
         dag = spec["transcribe_books"]
         self.assertEqual(dag["params"]["budget_usd"], 60)
+        self.assertIs(dag["params"]["reread_names"], False)
         tasks = {t["task_id"]: t for t in dag["tasks"]}
         self.assertEqual(set(tasks), {"enqueue", "transcribe", "index", "guess_places"})
         self.assertEqual(tasks["transcribe"]["pool"], "llm_api")

@@ -89,9 +89,19 @@ def assemble_books():
 DEFAULT_TRANSCRIBE_BUDGET_USD = 60.0
 
 
-def enqueue_transcripts(enqueue="", document_ids=""):
-    from birddog.book_transcripts import enqueue as enqueue_rows
+def _bool(value):
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def enqueue_transcripts(enqueue="", document_ids="", reread_names=""):
+    """Queue books to transcribe, or with reread_names, put the finished books
+    in document_ids back for the Opus names re-run (no Sonnet redo)."""
+    from birddog.book_transcripts import enqueue as enqueue_rows, enqueue_names_reread
     ids = [int(x) for x in str(document_ids or "").replace(";", ",").split(",") if x.strip().isdigit()]
+    if _bool(reread_names):
+        n = enqueue_names_reread(ids)
+        _logger.info("queued %d of %d books for the names re-read", n, len(ids))
+        return n
     n = enqueue_rows(_int(enqueue, 0), ids)
     _logger.info("queued %d books for transcription", n)
     return n
