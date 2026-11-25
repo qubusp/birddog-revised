@@ -62,7 +62,7 @@ read_books:
         __type__: datetime.timedelta
         hours: 12
     - task_id: read_wait
-      decorator: airflow.sdk.task.sensor
+      decorator: airflow.providers.standard.decorators.sensor.sensor_task
       python_callable: birddog.dag_tasks_books.batch_wait
       pipeline: read_books
       use_batch: "{{ params.use_batch }}"
@@ -94,7 +94,7 @@ read_books:
         __type__: datetime.timedelta
         hours: 6
     - task_id: reread_wait
-      decorator: airflow.sdk.task.sensor
+      decorator: airflow.providers.standard.decorators.sensor.sensor_task
       python_callable: birddog.dag_tasks_books.batch_wait
       pipeline: read_books
       use_batch: "{{ params.use_batch }}"
@@ -184,7 +184,7 @@ transcribe_books:
         __type__: datetime.timedelta
         hours: 12
     - task_id: transcribe_wait
-      decorator: airflow.sdk.task.sensor
+      decorator: airflow.providers.standard.decorators.sensor.sensor_task
       python_callable: birddog.dag_tasks_books.batch_wait
       pipeline: transcribe_books
       use_batch: "{{ params.use_batch }}"
@@ -216,7 +216,7 @@ transcribe_books:
         __type__: datetime.timedelta
         hours: 6
     - task_id: reread_wait
-      decorator: airflow.sdk.task.sensor
+      decorator: airflow.providers.standard.decorators.sensor.sensor_task
       python_callable: birddog.dag_tasks_books.batch_wait
       pipeline: transcribe_books
       use_batch: "{{ params.use_batch }}"

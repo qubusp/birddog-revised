@@ -116,7 +116,7 @@ def test_dags_have_batch_shape():
         assert dag["params"]["use_batch"] is True
         tasks = {t["task_id"]: t for t in dag["tasks"]}
         for tid in (f"{first}_wait", "reread_wait"):
-            assert tasks[tid]["decorator"] == "airflow.sdk.task.sensor"
+            assert tasks[tid]["decorator"] == "airflow.providers.standard.decorators.sensor.sensor_task"
             assert tasks[tid]["mode"] == "reschedule" and tasks[tid]["timeout"] >= 24 * 3600
         assert tasks["reread_submit"]["dependencies"] == [f"{first}_collect"]
         for t in tasks.values():
