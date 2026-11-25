@@ -1,0 +1,15 @@
+# One host per box. The ssh target comes from DATA_BOX_HOST / APPS_BOX_HOST
+# (user@host; the GitHub variables of the same names), defaulting to the
+# boxes in deploy/two-box.md.
+databox:
+  hosts:
+    data_box:
+      deploy_target: "{{ lookup('env', 'DATA_BOX_HOST') | default('administrator@204.12.218.112', true) }}"
+      ansible_host: "{{ deploy_target.split('@') | last }}"
+      ansible_user: "{{ deploy_target.split('@') | first if '@' in deploy_target else 'administrator' }}"
+appsbox:
+  hosts:
+    apps_box:
+      deploy_target: "{{ lookup('env', 'APPS_BOX_HOST') | default('administrator@108.181.191.55', true) }}"
+      ansible_host: "{{ deploy_target.split('@') | last }}"
+      ansible_user: "{{ deploy_target.split('@') | first if '@' in deploy_target else 'administrator' }}"

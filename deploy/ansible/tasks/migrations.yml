@@ -1,0 +1,155 @@
+# Applies new or changed deploy/db/migrations/*.sql as birddog BEFORE the
+# code is synced (apply_migrations in sh/deploy-data; same table, columns and
+# checksums, so either tool sees what the other applied). The files are
+# streamed from this checkout into psql in the postgres container: one file at
+# a time, in autocommit mode (no wrapping transaction), after
+# SET lock_timeout, so DDL waiting behind a long read fails instead of
+# queueing live queries. A failed file is not recorded, nothing after it runs,
+# and the code is not synced.
+
+- name: Migrations | is postgres up
+  ansible.builtin.command: docker compose exec -T postgres pg_isready -q -U postgres
+  args:
+    chdir: "{{ deploy_dir }}"
+  register: pg_ready
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Migrations | skipped, postgres is not running
+  ansible.builtin.set_fact:
+    report: "{{ report + ['migrations: postgres is not running; skipped (a first start runs them via the migrate service)'] }}"
+  when: pg_ready.rc != 0
+
+- name: Migrations | plan and apply
+  when: pg_ready.rc == 0
+  block:
+    - name: Migrations | does public.schema_migrations exist
+      ansible.builtin.command: >-
+        docker compose exec -T postgres psql -U birddog -d birddog -X -q -v ON_ERROR_STOP=1
+        -At -c "SELECT to_regclass('public.schema_migrations') IS NOT NULL"
+      args:
+        chdir: "{{ deploy_dir }}"
+      register: mig_table
+      changed_when: false
+      check_mode: false
+
+    - name: Migrations | recorded files and checksums
+      ansible.builtin.command: >-
+        docker compose exec -T postgres psql -U birddog -d birddog -X -q -v ON_ERROR_STOP=1
+        -At -F ' ' -c "SELECT filename, checksum FROM public.schema_migrations"
+      args:
+        chdir: "{{ deploy_dir }}"
+      register: mig_applied
+      changed_when: false
+      check_mode: false
+      when: mig_table.stdout | trim == 't'
+
+    - name: Migrations | no table yet
+      ansible.builtin.set_fact:
+        report: "{{ report + ['migrations: public.schema_migrations does not exist yet: every file counts as new (they are idempotent)'] }}"
+      when: mig_table.stdout | trim != 't'
+
+    - name: Migrations | local files
+      ansible.builtin.find:
+        paths: "{{ repo_root }}/deploy/db/migrations"
+        patterns: "*.sql"
+      delegate_to: localhost
+      register: mig_files
+
+    - name: Migrations | file names are NNN_name.sql
+      ansible.builtin.assert:
+        that: item.path | basename is match('^[0-9]{3}_[A-Za-z0-9_]+\.sql$')
+        fail_msg: "unexpected migration file name: {{ item.path | basename }}"
+        quiet: true
+      loop: "{{ mig_files.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+    - name: Migrations | sha256 of each file
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        get_checksum: true
+        checksum_algorithm: sha256
+      delegate_to: localhost
+      loop: "{{ mig_files.files | map(attribute='path') | sort }}"
+      loop_control:
+        label: "{{ item | basename }}"
+      register: mig_stats
+
+    - name: Migrations | work out which are pending
+      ansible.builtin.set_fact:
+        mig_pending: >-
+          {%- set applied = {} -%}
+          {%- for line in (mig_applied.stdout_lines | default([])) if line | trim -%}
+            {%- set _ = applied.update({line.split(' ')[0]: line.split(' ')[1] | default('')}) -%}
+          {%- endfor -%}
+          {%- set ns = namespace(out=[]) -%}
+          {%- for r in mig_stats.results -%}
+            {%- set name = r.item | basename -%}
+            {%- set rec = applied.get(name, '') -%}
+            {%- if rec == '' or (all_migrations | bool) or rec != r.stat.checksum -%}
+              {%- set ns.out = ns.out + [{'name': name, 'path': r.item, 'sha256': r.stat.checksum,
+                                          'changed': rec != '' and rec != r.stat.checksum}] -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ ns.out | to_json }}
+
+    - name: Migrations | report
+      ansible.builtin.set_fact:
+        mig_pending: "{{ mig_pending | from_json if mig_pending is string else mig_pending }}"
+        mig_verb: "{{ 'record (without running)' if baseline_migrations | bool else 'apply' }}"
+
+    - name: Migrations | report pending
+      ansible.builtin.set_fact:
+        report: >-
+          {{ report
+             + (['migrations: none pending'] if not mig_pending else [])
+             + (mig_pending | map(attribute='name') | map('regex_replace', '^(.*)$',
+                'migrations: ' ~ ('would ' if ansible_check_mode else '') ~ mig_verb ~ ' \1') | list)
+             + (mig_pending | selectattr('changed') | map(attribute='name') | map('regex_replace', '^(.*)$',
+                'migrations: \1 changed since it was applied (re-applied; files are idempotent)') | list) }}
+
+    - name: Migrations | create public.schema_migrations
+      ansible.builtin.command: docker compose exec -T postgres psql -U birddog -d birddog -X -q -v ON_ERROR_STOP=1
+      changed_when: true
+      args:
+        chdir: "{{ deploy_dir }}"
+        stdin: |
+          CREATE TABLE IF NOT EXISTS public.schema_migrations (
+              filename   text PRIMARY KEY,
+              checksum   text NOT NULL,
+              applied_at timestamptz NOT NULL DEFAULT now()
+          );
+          COMMENT ON TABLE public.schema_migrations IS
+              'deploy/db/migrations files applied by sh/deploy-data (file name, sha256)';
+      when:
+        - mig_pending | length > 0
+        - not ansible_check_mode
+
+    - name: Migrations | record without running (baseline_migrations)
+      ansible.builtin.command: docker compose exec -T postgres psql -U birddog -d birddog -X -q -v ON_ERROR_STOP=1
+      changed_when: true
+      args:
+        chdir: "{{ deploy_dir }}"
+        stdin: |
+          {% for m in mig_pending %}
+          INSERT INTO public.schema_migrations (filename, checksum) VALUES ('{{ m.name }}', '{{ m.sha256 }}')
+          ON CONFLICT (filename) DO UPDATE SET checksum = EXCLUDED.checksum;
+          {% endfor %}
+      when:
+        - mig_pending | length > 0
+        - baseline_migrations | bool
+        - not ansible_check_mode
+
+    # include_tasks in a loop: when one file fails the host fails, and no
+    # later file runs
+    - name: Migrations | apply one file at a time
+      ansible.builtin.include_tasks: apply-migration.yml
+      loop: "{{ mig_pending }}"
+      loop_control:
+        loop_var: mig
+        label: "{{ mig.name }}"
+      when:
+        - not (baseline_migrations | bool)
+        - not ansible_check_mode

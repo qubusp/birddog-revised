@@ -1,0 +1,60 @@
+# Shared by deploy-data.yml and deploy-apps.yml. Mirrors sh/lib/deploy-common.sh;
+# test/test_deploy_ansible.py fails when the two disagree.
+
+# remote checkout, relative to the ssh user's home (BIRDDOG_REMOTE_DIR)
+remote_dir: "{{ lookup('env', 'BIRDDOG_REMOTE_DIR') | default('birddog-revised', true) }}"
+
+# the checkout this playbook ships: the repo two levels above deploy/ansible
+repo_root: "{{ (playbook_dir ~ '/../..') | realpath }}"
+
+# Paths never copied to the server (RSYNC_EXCLUDES in sh/lib/deploy-common.sh).
+# rsync does not delete excluded paths on the server either, so this list also
+# protects the server-only files: deploy/.env and its backups (secrets),
+# deploy/rclone/*.conf (backup credentials), LOGINS.md (credentials sheet
+# copied to the boxes by hand), caches.
+rsync_excludes:
+  - .git
+  - __pycache__
+  - "*.pyc"
+  - .pytest_cache
+  - .coverage
+  - htmlcov
+  - .DS_Store
+  - .idea
+  - .claude
+  - .cache
+  - ".venv*"
+  - "venv*"
+  - graphify-out
+  - /notebooks
+  - /research
+  - /archive
+  - /LOGINS.md
+  - /var
+  - /excel
+  - /static/downloads
+  - /deploy/.env
+  - "/deploy/.env.*.bak"
+  - "/deploy/.env.bak*"
+  - "/deploy/rclone/*.conf"
+  - "*key.json"
+  - token.json
+  - credentials.json
+
+# a sync that would delete more than this many files is probably pointed at
+# the wrong place: the deploy stops before copying anything
+rsync_max_delete: 100
+
+# Flags (ansible-playbook -e name=true; the workflow's inputs). The restarts
+# need the owner's explicit OK.
+restart_airflow: false
+restart_postgres: false
+init_roles: false
+all_migrations: false
+baseline_migrations: false
+
+# per-statement wait for a lock before a migration gives up (BIRDDOG_LOCK_TIMEOUT)
+lock_timeout: "{{ lookup('env', 'BIRDDOG_LOCK_TIMEOUT') | default('5s', true) }}"
+
+# markdown summary appended here when set (CI: $GITHUB_STEP_SUMMARY)
+summary_file: ""

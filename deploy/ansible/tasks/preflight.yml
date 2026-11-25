@@ -1,0 +1,99 @@
+# Local checks on the controller, then the box check (check_remote_box in
+# sh/lib/deploy-common.sh). Read only, so these run in check mode too.
+
+- name: Local | the checkout is the birddog repo
+  ansible.builtin.assert:
+    that:
+      - (repo_root ~ '/deploy/docker-compose.yml') is file
+      - (repo_root ~ '/birddog') is directory
+    fail_msg: "{{ repo_root }} does not look like the birddog repo"
+    quiet: true
+
+- name: Local | git state of the checkout
+  ansible.builtin.shell: |
+    set -euo pipefail
+    echo "sha $(git rev-parse HEAD)"
+    echo "branch $(git rev-parse --abbrev-ref HEAD)"
+    echo "dirty $(git status --porcelain --untracked-files=normal | wc -l | tr -d ' ')"
+    echo "remotes $(git branch -r --contains HEAD 2>/dev/null | wc -l | tr -d ' ')"
+  args:
+    chdir: "{{ repo_root }}"
+    executable: /bin/bash
+  delegate_to: localhost
+  register: git_state
+  changed_when: false
+  check_mode: false
+
+- name: Local | parse git state
+  ansible.builtin.set_fact:
+    git_info: "{{ dict(git_state.stdout_lines | map('split', ' ', 1)) }}"
+
+- name: Local | record what ships
+  ansible.builtin.set_fact:
+    report: "{{ report + ['commit `' ~ git_info.sha ~ '` (' ~ git_info.branch ~ ')'] }}"
+
+# The deploy ships the working tree and deletes server files that are not in
+# it, so it must be a pushed commit: uncommitted or unpushed work would roll
+# back (or later be rolled back by) everyone else's deploys.
+- name: Local | refuse a dirty or unpushed checkout
+  ansible.builtin.fail:
+    msg: >-
+      {{ repo_root }} has {{ git_info.dirty }} uncommitted or untracked change(s),
+      or HEAD is on no remote branch (remotes containing it: {{ git_info.remotes }}).
+      Commit and push first (sh/deploy-data / sh/deploy-apps still ship a working tree).
+  when:
+    - not ansible_check_mode
+    - (git_info.dirty | int) > 0 or (git_info.remotes | int) == 0
+
+- name: Local | warn about a dirty or unpushed checkout (dry run only)
+  ansible.builtin.set_fact:
+    report: >-
+      {{ report + ['WARNING: checkout has ' ~ git_info.dirty ~ ' uncommitted change(s), on '
+         ~ git_info.remotes ~ ' remote branch(es); a real deploy would refuse it'] }}
+  when:
+    - ansible_check_mode
+    - (git_info.dirty | int) > 0 or (git_info.remotes | int) == 0
+
+- name: Box | the remote checkout exists
+  ansible.builtin.shell: cd ~ && cd {{ remote_dir | quote }} && test -f deploy/docker-compose.yml && pwd -P
+  register: remote_probe
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Box | refuse when the checkout is missing
+  ansible.builtin.fail:
+    msg: >-
+      {{ deploy_target }}:{{ remote_dir }}/deploy/docker-compose.yml not found
+      (first deploy? see docs/onboarding/operations.md)
+  when: remote_probe.rc != 0
+
+- name: Box | remember the compose directory
+  ansible.builtin.set_fact:
+    deploy_dir: "{{ remote_probe.stdout | trim }}/deploy"
+    remote_root: "{{ remote_probe.stdout | trim }}"
+
+# COMPOSE_FILE is not a secret; nothing else is read from .env here.
+- name: Box | COMPOSE_FILE in deploy/.env
+  ansible.builtin.shell: |  # noqa: command-instead-of-module
+    set -o pipefail
+    [ -f .env ] || exit 0
+    sed -n 's/^COMPOSE_FILE=//p' .env | tail -1
+  args:
+    chdir: "{{ deploy_dir }}"
+    executable: /bin/bash
+  register: compose_file
+  changed_when: false
+  check_mode: false
+
+# a missing COMPOSE_FILE is added by ensure-env
+- name: Box | refuse the wrong box
+  ansible.builtin.fail:
+    msg: "{{ deploy_target }}'s deploy/.env has COMPOSE_FILE={{ compose_file.stdout }}, expected {{ compose_override }}; wrong box?"
+  when:
+    - compose_file.stdout | length > 0
+    - compose_override not in compose_file.stdout
+
+- name: Box | ok
+  ansible.builtin.set_fact:
+    report: "{{ report + ['box ok: ' ~ deploy_target ~ ':' ~ deploy_dir ~ ', ' ~ compose_override] }}"

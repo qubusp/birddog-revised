@@ -1,0 +1,115 @@
+# Deploys the apps box (birddog-web, Mathesar, JupyterHub, ToolJet, Saltcorn,
+# Marmot, Grafana, apps-postgres, Caddy; deploy/two-box.md). Port of
+# sh/deploy-apps. Everything on this box may be recreated, so it ends with a
+# plain `docker compose up -d`:
+#   1. box check: the remote checkout exists and deploy/.env selects the
+#      apps-box override (refuses to run against the data box)
+#   2. adds missing deploy/.env keys; keys that must match the data box are
+#      only checked, never generated (a missing one stops the deploy)
+#   3. rsync of the repo
+#   4. builds birddog-web, jupyterhub and the jupyter-singleuser notebook
+#      image (profile build-only: built, never started)
+#   5. docker compose up -d, then restarts Caddy if Caddyfile.appsbox changed
+# Migrations belong to the data box: deploy-data.yml first when the new code
+# needs a schema change. Dry run: --check --diff.
+- name: Deploy the apps box
+  hosts: appsbox
+  gather_facts: false
+  vars:
+    report: []
+  tasks:
+    - name: Deploy
+      block:
+        - name: Preflight
+          ansible.builtin.import_tasks: tasks/preflight.yml
+
+        - name: Ensure deploy/.env keys
+          ansible.builtin.import_tasks: tasks/ensure-env.yml
+
+        - name: Sync the code
+          ansible.builtin.import_tasks: tasks/sync.yml
+
+        - name: Containers before the deploy
+          ansible.builtin.import_tasks: tasks/drift.yml
+          vars:
+            drift_services: "{{ app_services }}"
+
+        - name: Would run (dry run)
+          ansible.builtin.set_fact:
+            report: >-
+              {{ report + ['would run: docker compose build birddog-web jupyterhub',
+                           'would run: docker compose --profile build-only build jupyter-singleuser',
+                           'would run: docker compose up -d (recreates the DRIFT services above, and any whose image the build changes)'] }}
+          when: ansible_check_mode
+
+        - name: Build birddog-web and jupyterhub
+          ansible.builtin.command: docker compose build birddog-web jupyterhub
+          changed_when: true
+          args:
+            chdir: "{{ deploy_dir }}"
+          when: not ansible_check_mode
+
+        # the per-user notebook image JupyterHub spawns (build-only profile, never up)
+        - name: Build the jupyter-singleuser image
+          ansible.builtin.command: docker compose --profile build-only build jupyter-singleuser
+          changed_when: true
+          args:
+            chdir: "{{ deploy_dir }}"
+          when: not ansible_check_mode
+
+        - name: Compose up -d (recreates what changed)
+          ansible.builtin.command: docker compose up -d
+          changed_when: true
+          args:
+            chdir: "{{ deploy_dir }}"
+          when: not ansible_check_mode
+
+        - name: Report the build and up
+          ansible.builtin.set_fact:
+            report: "{{ report + ['built birddog-web, jupyterhub, jupyter-singleuser; docker compose up -d'] }}"
+          when: not ansible_check_mode
+
+        # after up -d: a Caddy that up -d recreated already reads the new file
+        - name: Caddy | is the Caddyfile stale
+          ansible.builtin.import_tasks: tasks/caddy-stale.yml
+
+        - name: Caddy | restart (Caddyfile changed)
+          ansible.builtin.command: docker compose restart caddy
+          changed_when: true
+          args:
+            chdir: "{{ deploy_dir }}"
+          when: caddy_stale | bool and not ansible_check_mode
+
+        - name: Caddy | report
+          ansible.builtin.set_fact:
+            report: >-
+              {{ report + ['caddy: ' ~ (('docker compose restart caddy (' ~ caddyfile ~ ' changed)'
+                                         ~ (' (would run, unless up -d recreates caddy)' if ansible_check_mode else ''))
+                                        if caddy_stale | bool else 'config unchanged')] }}
+
+        - name: Status
+          ansible.builtin.command: !unsafe "docker compose ps --format 'table {{.Service}}\t{{.Status}}'"  # noqa: jinja[invalid]
+          args:
+            chdir: "{{ deploy_dir }}"
+          register: compose_ps
+          changed_when: false
+          check_mode: false
+
+        - name: Status | show
+          ansible.builtin.debug:
+            msg: "{{ compose_ps.stdout_lines }}"
+
+      rescue:
+        - name: Record the failure
+          ansible.builtin.set_fact:
+            report: "{{ report + ['**FAILED** at `' ~ ansible_failed_task.name ~ '`: ' ~ (ansible_failed_result.msg | default('see the log'))] }}"
+
+        - name: Summary (failed)
+          ansible.builtin.import_tasks: tasks/summary.yml
+
+        - name: Stop
+          ansible.builtin.fail:
+            msg: "{{ ansible_failed_result.msg | default('deploy failed; see above') }}"
+
+    - name: Summary
+      ansible.builtin.import_tasks: tasks/summary.yml

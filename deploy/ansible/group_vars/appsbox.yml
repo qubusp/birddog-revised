@@ -1,0 +1,46 @@
+# Apps box: birddog-web, Mathesar, JupyterHub, ToolJet, Saltcorn, Marmot,
+# Grafana, apps-postgres, Caddy (deploy/two-box.md). Mirrors sh/deploy-apps.
+box_name: apps box
+compose_override: docker-compose.appsbox.yml
+caddyfile: Caddyfile.appsbox
+app_services: [apps-postgres, birddog-web, mathesar, jupyterhub, tooljet, saltcorn, marmot, grafana, caddy]
+
+# Same text as ENV_SPEC in sh/deploy-apps (test/test_deploy_ansible.py checks).
+# Generated here when missing: secrets only this box uses, made once and never
+# rotated (MARMOT_ENCRYPTION_KEY encrypts Marmot's stored credentials,
+# TOOLJET_LOCKBOX_MASTER_KEY ToolJet's). "require": the value has to equal the
+# data box's (the role passwords are set there, and the Airflow API user lives
+# there); never generated. "blank": data-box keys that compose interpolates
+# but nothing on this box uses (keeps compose from warning).
+env_spec: |
+  COMPOSE_FILE literal:docker-compose.yml:{{ compose_override }}
+  PUBLIC_DOMAIN literal:108-181-191-55.sslip.io
+  APPS_POSTGRES_PASSWORD hex24
+  MATHESAR_DB_PASSWORD hex24
+  MATHESAR_SECRET_KEY hex32
+  MATHESAR_ADMIN_USER literal:admin
+  MATHESAR_ADMIN_PASSWORD hex12
+  JUPYTERHUB_ADMIN_USER literal:admin
+  JUPYTERHUB_ADMIN_PASSWORD hex12
+  TOOLJET_DB_PASSWORD hex24
+  TOOLJET_LOCKBOX_MASTER_KEY hex32
+  TOOLJET_SECRET_KEY_BASE hex64
+  SALTCORN_DB_PASSWORD hex24
+  SALTCORN_SESSION_SECRET hex32
+  MARMOT_DB_PASSWORD hex24
+  MARMOT_ENCRYPTION_KEY b64_32
+  GRAFANA_ADMIN_PASSWORD hex16
+  BIRDDOG_SECRET_KEY hex32
+  BIRDDOG_SYNC_AIRFLOW_PASSWORD hex24
+  BIRDDOG_UI_DB_PASSWORD require
+  JUPYTER_DB_PASSWORD require
+  BIRDDOG_WEB_DB_PASSWORD require
+  AIRFLOW_API_USER require
+  AIRFLOW_API_PASSWORD require
+  POSTGRES_PASSWORD blank
+  AIRFLOW_DB_PASSWORD blank
+  BIRDDOG_DB_PASSWORD blank
+  FERNET_KEY blank
+  JWT_SECRET blank
+  AIRFLOW_ADMIN_USER blank
+  AIRFLOW_ADMIN_PASSWORD blank

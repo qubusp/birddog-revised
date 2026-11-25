@@ -1,0 +1,34 @@
+# Data box: Postgres + Airflow (deploy/two-box.md). Mirrors sh/deploy-data.
+box_name: data box
+compose_override: docker-compose.databox.yml
+caddyfile: Caddyfile.databox
+airflow_services: [airflow-apiserver, airflow-scheduler, airflow-dag-processor]
+
+# Keys this box's services and init scripts read: "KEY KIND" per line, the
+# same text as ENV_SPEC in sh/deploy-data (test/test_deploy_ansible.py checks).
+# Kinds: hexN, b64_N, fernet, literal:V, blank, require (tasks/ensure-env.yml).
+env_spec: |
+  COMPOSE_FILE literal:docker-compose.yml:{{ compose_override }}
+  POSTGRES_PASSWORD hex24
+  AIRFLOW_DB_PASSWORD hex24
+  BIRDDOG_DB_PASSWORD hex24
+  FERNET_KEY fernet
+  JWT_SECRET hex24
+  AIRFLOW_ADMIN_USER literal:admin
+  AIRFLOW_ADMIN_PASSWORD hex12
+  PUBLIC_DOMAIN literal:204-12-218-112.sslip.io
+  BIRDDOG_UI_DB_PASSWORD hex24
+  MATHESAR_DB_PASSWORD hex24
+  JUPYTER_DB_PASSWORD hex24
+  BIRDDOG_WEB_DB_PASSWORD hex24
+  MARMOT_READER_DB_PASSWORD hex24
+  AIRFLOW_API_USER literal:birddog-web
+  AIRFLOW_API_PASSWORD hex24
+
+# role scripts run by init_roles, in order: file and the .env key passed in
+# (02-ui.sh reads its passwords from the postgres container's own env)
+role_scripts:
+  - {file: 02-ui.sh, var: ""}
+  - {file: 03-reader.sh, var: JUPYTER_DB_PASSWORD}
+  - {file: 05-web.sh, var: BIRDDOG_WEB_DB_PASSWORD}
+  - {file: 06-marmot-reader.sh, var: MARMOT_READER_DB_PASSWORD}

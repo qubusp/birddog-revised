@@ -1,0 +1,67 @@
+# rsync of the repo (sync_repo in sh/lib/deploy-common.sh): always list the
+# changes first with a dry run (synchronize returns rsync's itemized lines,
+# --out-format '%i %n%L', in stdout_lines; attribute-only ".f..t" lines are
+# dropped, as in the sh script), stop when that would delete more than
+# rsync_max_delete files, then copy (not in check mode). --delete, but
+# excluded paths are neither copied nor deleted (no --delete-excluded).
+
+- name: Rsync | options
+  ansible.builtin.set_fact:
+    rsync_opts_common: "{{ rsync_excludes | map('regex_replace', '^', '--exclude=') | list }}"
+
+- name: Rsync | plan (dry run)
+  ansible.posix.synchronize:
+    src: "{{ repo_root }}/"
+    dest: "{{ remote_root }}/"
+    archive: true
+    compress: true
+    checksum: true
+    delete: true
+    delay_updates: false
+    verify_host: true
+    rsync_opts: "{{ rsync_opts_common }}"
+  check_mode: true
+  changed_when: false
+  register: rsync_plan
+
+- name: Rsync | parse the plan
+  ansible.builtin.set_fact:
+    rsync_changes: >-
+      {{ rsync_plan.stdout_lines | default([]) | map('trim') | reject('equalto', '')
+         | reject('match', '^\.') | list }}
+
+- name: Rsync | refuse a sync that would delete too much
+  ansible.builtin.fail:
+    msg: >-
+      rsync would delete {{ rsync_changes | select('match', '^\*deleting') | list | length }} files on
+      {{ deploy_target }}:{{ remote_root }} (limit {{ rsync_max_delete }}); wrong directory?
+      First ones: {{ (rsync_changes | select('match', '^\*deleting') | list)[:20] | join(', ') }}
+  when: (rsync_changes | select('match', '^\*deleting') | list | length) > (rsync_max_delete | int)
+
+- name: Rsync | report
+  ansible.builtin.set_fact:
+    report: >-
+      {{ report + ['rsync to ' ~ deploy_target ~ ':' ~ remote_root ~ ': '
+         ~ (rsync_changes | length) ~ ' change(s)'
+         ~ (' (' ~ (rsync_changes | select('match', '^\*deleting') | list | length) ~ ' deletion(s))'
+            if rsync_changes | select('match', '^\*deleting') | list else '')
+         ~ (' (dry run)' if ansible_check_mode else '')] }}
+
+- name: Rsync | change list
+  ansible.builtin.debug:
+    msg: "{{ rsync_changes if rsync_changes else 'no changes' }}"
+
+- name: Rsync | copy
+  ansible.posix.synchronize:
+    src: "{{ repo_root }}/"
+    dest: "{{ remote_root }}/"
+    archive: true
+    compress: true
+    checksum: true
+    delete: true
+    delay_updates: false
+    verify_host: true
+    rsync_opts: "{{ rsync_opts_common + ['--max-delete=' ~ rsync_max_delete] }}"
+  when:
+    - not ansible_check_mode
+    - rsync_changes | length > 0
