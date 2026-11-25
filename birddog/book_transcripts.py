@@ -153,22 +153,31 @@ form in the entry's note."""
 
 # --- Claude --------------------------------------------------------------------
 
-def transcribe_pages(title, page_numbers, model, effort, names=False):
+TRANSCRIBE_EFFORT = {books.READ_MODEL: "medium", books.REREAD_MODEL: "high"}
+TRANSCRIBE_MISSING = {"illegible": True, "text": "", "entries": [], "places": [], "notes": "not returned"}
+
+
+def transcribe_prompt(title, names=False):
+    return TRANSCRIBE_PROMPT.format(title=title) + (NAMES_PROMPT if names else "")
+
+
+def transcribe_params(title, page_numbers, model, names=False):
+    """Messages API parameters to transcribe a few pages (batch requests)."""
+    images = [(p, books.page_image(title, p)) for p in page_numbers]
+    return books.request_params(model, books._pages_content(images, transcribe_prompt(title, names)),
+                                TRANSCRIBE_SCHEMA, effort=TRANSCRIBE_EFFORT[model],
+                                max_tokens=TRANSCRIBE_MAX_TOKENS)
+
+
+def transcribe_pages(title, page_numbers, model, effort=None, names=False):
     """One call over a few pages. Returns ({page_no: result}, tokens_in, tokens_out, $).
     `names` adds NAMES_PROMPT (best reading of every name, uncertain letters marked ?)."""
     images = [(p, books.page_image(title, p)) for p in page_numbers]
-    prompt = TRANSCRIBE_PROMPT.format(title=title) + (NAMES_PROMPT if names else "")
     parsed, tokens_in, tokens_out, dollars = books.ask(
-        model, books._pages_content(images, prompt),
-        TRANSCRIBE_SCHEMA, effort=effort, max_tokens=TRANSCRIBE_MAX_TOKENS, stream=True)
-    by_page = {}
-    for entry in parsed.get("pages", []):
-        if entry.get("page") in page_numbers:
-            by_page[entry["page"]] = entry
-    for p in page_numbers:  # a page the model skipped counts as illegible, not as empty
-        by_page.setdefault(p, {"page": p, "illegible": True, "text": "", "entries": [],
-                               "places": [], "notes": "not returned"})
-    return by_page, tokens_in, tokens_out, dollars
+        model, books._pages_content(images, transcribe_prompt(title, names)),
+        TRANSCRIBE_SCHEMA, effort=effort or TRANSCRIBE_EFFORT[model],
+        max_tokens=TRANSCRIBE_MAX_TOKENS, stream=True)
+    return books.pages_from(parsed, page_numbers, TRANSCRIBE_MISSING), tokens_in, tokens_out, dollars
 
 
 # --- which pages Opus re-reads (pure) ------------------------------------------------

@@ -157,8 +157,10 @@ class DagTests(unittest.TestCase):
         self.assertEqual(dag["params"]["budget_usd"], 60)
         self.assertIs(dag["params"]["reread_names"], False)
         tasks = {t["task_id"]: t for t in dag["tasks"]}
-        self.assertEqual(set(tasks), {"enqueue", "transcribe", "index", "guess_places"})
-        self.assertEqual(tasks["transcribe"]["pool"], "llm_api")
+        self.assertEqual(set(tasks), {"enqueue", "transcribe_submit", "transcribe_wait", "transcribe_collect",
+                                      "reread_submit", "reread_wait", "reread_collect", "transcribe_finish",
+                                      "index", "guess_places"})
+        self.assertEqual(tasks["transcribe_submit"]["pool"], "llm_api")
         from birddog import dag_tasks_books
         for t in tasks.values():
             module, name = t["python_callable"].rsplit(".", 1)

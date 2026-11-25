@@ -136,3 +136,66 @@ def guess_places(budget_usd="", limit=""):
     summary = guess_unmatched(_run_id(), budget, limit=_int(limit, None))
     _logger.info("guess_places (budget $%.2f): %s", budget, summary)
     return summary
+
+
+# --- batch mode (use_batch): submit -> wait (rescheduling sensor) -> collect ----------
+# birddog/book_batches.py. With use_batch false, the first submit task runs the
+# synchronous path (read_approved / transcribe_queued) and the rest do nothing.
+
+def _batch_dag(pipeline):
+    if pipeline not in ("read_books", "transcribe_books"):
+        raise ValueError(pipeline)
+    return pipeline
+
+
+def batch_submit(pipeline="", phase="", use_batch="true", budget_usd=""):
+    """Submit a phase's pages as a batch (or, synchronously, do the whole read)."""
+    dag = _batch_dag(pipeline)
+    _require_key()
+    default = DEFAULT_BUDGET_USD if dag == "read_books" else DEFAULT_TRANSCRIBE_BUDGET_USD
+    budget = _float(budget_usd, default)
+    if not _bool(use_batch):
+        if phase != "first":
+            return {"skipped": "synchronous run"}
+        if dag == "read_books":
+            from birddog.books import read_approved
+            summary = read_approved(_run_id(), budget)
+        else:
+            from birddog.book_transcripts import transcribe_queued
+            summary = transcribe_queued(_run_id(), budget)
+        _logger.info("%s synchronously (budget $%.2f): %s", dag, budget, summary)
+        return summary
+    from birddog.book_batches import submit
+    summary = submit(dag, phase, _run_id(), budget)
+    _logger.info("batch submit: %s", summary)
+    return summary
+
+
+def batch_wait(pipeline="", use_batch="true"):
+    """Sensor (mode reschedule): True once every open batch of the DAG has ended."""
+    dag = _batch_dag(pipeline)
+    if not _bool(use_batch):
+        return True
+    from birddog.book_batches import poll
+    return poll(dag)
+
+
+def batch_collect(pipeline="", phase="", use_batch="true"):
+    dag = _batch_dag(pipeline)
+    if not _bool(use_batch):
+        return {"skipped": "synchronous run"}
+    _require_key()
+    from birddog.book_batches import collect
+    summary = collect(dag, phase, _run_id())
+    _logger.info("batch collect %s %s: %s", dag, phase, summary)
+    return summary
+
+
+def batch_finish(pipeline="", use_batch="true"):
+    dag = _batch_dag(pipeline)
+    if not _bool(use_batch):
+        return {"skipped": "synchronous run"}
+    from birddog.book_batches import finish
+    summary = finish(dag, _run_id())
+    _logger.info("batch finish %s: %s", dag, summary)
+    return summary

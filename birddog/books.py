@@ -123,18 +123,53 @@ def _input_tokens(usage):
             + (getattr(usage, "cache_read_input_tokens", 0) or 0))
 
 
+BATCH_PRICE_FACTOR = 0.5   # the Message Batches API bills half the standard price
+
+
+def request_params(model, content, schema, effort, max_tokens=16000):
+    """The Messages API parameters of one structured call (no fallbacks: the
+    Batches API rejects them, so ask() adds them for synchronous calls)."""
+    return dict(
+        model=model,
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": content}],
+        output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
+    )
+
+
+class Refused(BookError):
+    """The model declined the request (stop_reason refusal)."""
+
+
+def parse_message(model, message, max_tokens, price_factor=1.0):
+    """(parsed JSON, input tokens, output tokens, $) from a Message. Raises
+    Refused on a refusal and BookError on a cut-off or empty answer; the
+    dollars are counted either way, so callers can record them from err.cost."""
+    tokens_in, tokens_out = _input_tokens(message.usage), message.usage.output_tokens or 0
+    # the fallback may have answered on another model: price what ran
+    dollars = cost_usd(getattr(message, "model", None) or model, tokens_in, tokens_out) * price_factor
+    error = None
+    if message.stop_reason == "refusal":
+        error = Refused(f"{model} declined the request")
+    elif message.stop_reason == "max_tokens":
+        error = BookError(f"{model} answer cut off at max_tokens={max_tokens}")
+    else:
+        text = next((b.text for b in message.content if b.type == "text"), None)
+        if text is None:
+            error = BookError(f"{model} returned no text block")
+    if error:
+        error.cost = (tokens_in, tokens_out, dollars)
+        raise error
+    return json.loads(text), tokens_in, tokens_out, dollars
+
+
 def ask(model, content, schema, effort, max_tokens=16000, stream=False):
     """One structured call. Returns (parsed JSON, input tokens, output tokens, $).
     Raises BookError on a refusal or a cut-off answer. `stream` sends it as a
     stream and waits for the final message: the SDK wants that for a large
     max_tokens (full transcriptions), where one answer can outlast a plain
     request's HTTP timeout."""
-    kwargs = dict(
-        model=model,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": content}],
-        output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
-    )
+    kwargs = request_params(model, content, schema, effort, max_tokens)
     if model in _FALLBACK_MODELS:
         kwargs.update(betas=[_FALLBACK_BETA], fallbacks="default")
         api = client().beta.messages
@@ -145,17 +180,7 @@ def ask(model, content, schema, effort, max_tokens=16000, stream=False):
             response = s.get_final_message()
     else:
         response = api.create(**kwargs)
-    tokens_in, tokens_out = _input_tokens(response.usage), response.usage.output_tokens or 0
-    # the fallback may have answered on another model: price what ran
-    dollars = cost_usd(response.model or model, tokens_in, tokens_out)
-    if response.stop_reason == "refusal":
-        raise BookError(f"{model} declined the request")
-    if response.stop_reason == "max_tokens":
-        raise BookError(f"{model} answer cut off at max_tokens={max_tokens}")
-    text = next((b.text for b in response.content if b.type == "text"), None)
-    if text is None:
-        raise BookError(f"{model} returned no text block")
-    return json.loads(text), tokens_in, tokens_out, dollars
+    return parse_message(model, response, max_tokens)
 
 
 def _image_block(jpeg):
@@ -349,19 +374,39 @@ def _hard_page(result):
     return REREAD_LOW_CONFIDENCE and any(p.get("confidence") == "low" for p in result.get("places", []))
 
 
-def read_pages(title, page_numbers, model, effort):
+READ_MAX_TOKENS = 32000
+READ_EFFORT = {READ_MODEL: "medium", REREAD_MODEL: "high"}
+
+
+def read_params(title, page_numbers, model):
+    """Messages API parameters to read a few pages (synchronous or batch)."""
+    images = [(p, page_image(title, p)) for p in page_numbers]
+    return request_params(model, _pages_content(images, READ_PROMPT.format(title=title)), READ_SCHEMA,
+                          effort=READ_EFFORT[model], max_tokens=READ_MAX_TOKENS)
+
+
+def pages_from(parsed, page_numbers, missing):
+    """{page_no: result} for the pages asked; a page the model skipped gets
+    `missing` (illegible, not empty)."""
+    by_page = {}
+    for entry in (parsed or {}).get("pages", []):
+        if isinstance(entry, dict) and entry.get("page") in page_numbers:
+            by_page[entry["page"]] = entry
+    for p in page_numbers:
+        by_page.setdefault(p, {"page": p, **missing})
+    return by_page
+
+
+READ_MISSING = {"illegible": True, "places": [], "notes": "not returned"}
+
+
+def read_pages(title, page_numbers, model, effort=None):
     """One call over a few pages. Returns ({page_no: result}, tokens_in, tokens_out, $)."""
     images = [(p, page_image(title, p)) for p in page_numbers]
     parsed, tokens_in, tokens_out, dollars = ask(
         model, _pages_content(images, READ_PROMPT.format(title=title)), READ_SCHEMA,
-        effort=effort, max_tokens=32000)
-    by_page = {}
-    for entry in parsed.get("pages", []):
-        if entry.get("page") in page_numbers:
-            by_page[entry["page"]] = entry
-    for p in page_numbers:  # a page the model skipped counts as illegible, not as empty
-        by_page.setdefault(p, {"page": p, "illegible": True, "places": [], "notes": "not returned"})
-    return by_page, tokens_in, tokens_out, dollars
+        effort=effort or READ_EFFORT[model], max_tokens=READ_MAX_TOKENS)
+    return pages_from(parsed, page_numbers, READ_MISSING), tokens_in, tokens_out, dollars
 
 
 # --- assemble --------------------------------------------------------------------

@@ -107,7 +107,28 @@ Behaviour:
 | `transcribe_books` | manual | Full transcription, with its own queue `core.book_transcript_queue` (the `read_books` rows stay as they are). `enqueue` queues `enqueue` books that `read_books` finished (status `done`) and/or the comma-separated `document_ids`. `transcribe` (Sonnet, 2 pages per streamed call; Opus redoes, asking for its best reading of every name with uncertain letters marked `?`, the pages Sonnet marks illegible or whose names came back unreadable: at least 2 entries, or half of them, with no readable person; 63 of the pilot's 380 pages) stores each page's text, register entries and places in `core.book_transcript`, until the run has spent `budget_usd` ($60); an interrupted book resumes next run. `reread_names: true` with `document_ids` puts finished books back (status `reread_names`) for that Opus step only, on pages whose best reading still needs it and was not yet read with the names prompt; then `index` rebuilds their entries. `index` (no API calls, runs even if `transcribe` failed) rebuilds `core.book_entry` / `core.book_entry_place` from each page's best reading and matches entry places to `core.location`. Read in `views.books__transcripts`, `books__entries`, `books__entry_places`, `books__transcription_progress`; search with `core.search_books(q)`. Claude task in pool `llm_api`. |
 | `guess_unmatched_places` | manual | `guess_places` (Sonnet, low effort, 25 places per call, `budget_usd` $2, optional `limit`) gives a rough latitude/longitude, confidence and basis for each book place that matched no `core.location` row (from `read_books` and `transcribe_books`, deduplicated on `core.place_key(normalized, admin_context)`), into `core.place_guess`; places already guessed are skipped (delete a row to redo it). The same task ends `read_books` and `transcribe_books` (param `guess_budget_usd`, $1). Shown with the 3 nearest known locations in `views.books__unmatched_places`. Guesses are never written as links. Pool `llm_api`. |
 
-Code: `birddog/books.py`, `birddog/book_transcripts.py`, `birddog/place_guess.py`, `birddog/dag_tasks_books.py`; tables: migrations 017, 023 and 024.
+Code: `birddog/books.py`, `birddog/book_transcripts.py`, `birddog/book_batches.py`, `birddog/place_guess.py`, `birddog/dag_tasks_books.py`; tables: migrations 017, 023, 024, 026 and 027.
+
+**Batch mode (`use_batch`, default true in `read_books` and `transcribe_books`).** The
+expensive calls (Sonnet read or transcription, then the Opus re-read) go through the
+Message Batches API at half price. Each phase is three tasks: `*_submit` (pool
+`llm_api`) picks the pages that need it and are not in an open batch, estimates each
+request at batch prices from the pilot's measured tokens per page, and submits only
+what fits in what is left of `budget_usd` (the rest stays queued for the next run);
+`*_wait` is a sensor in `reschedule` mode that polls every 5 minutes, so it holds no
+worker slot, with a 27-hour timeout (the API ends every batch within 24 hours, most
+within one); `*_collect` saves the results exactly as the synchronous path does, at
+batch prices. Tasks: `read_submit`/`transcribe_submit` → `*_wait` → `*_collect` →
+`reread_submit` → `reread_wait` → `reread_collect` → `read_finish`/`transcribe_finish`
+(books whose pages are all done move to `read` / `transcribed`), then `assemble` /
+`index` and `guess_places` as before. A refused request is retried synchronously
+(the server-side fallbacks are not allowed in batches); a cut-off answer fails the book;
+an errored or expired request leaves its pages for the next run. A run that dies after
+submitting resubmits nothing: open pages are skipped and `*_collect` takes every ended
+batch of the DAG and phase, whichever run made it. Batches and requests:
+`core.llm_batch`, `core.llm_batch_request`; progress in `views.books__batches`. Results
+stay downloadable for 29 days. With `use_batch: false` the first submit task runs the
+old synchronous step and the other batch tasks do nothing.
 
 Entry years: register entries often give only day and month, so `views.books__entries.year` (and `books__entry_places.year`) falls back to the book's year: `core.book_year_range(document_id)` reads it from the title, else from the first 3 transcribed pages. A book covering a range ("1846-1854") gives no single year; `year_source` says where a year came from (`entry` or `book`), `book_year_from` / `book_year_to` give the book's range.
 Page images come from Commons' page renderer (`iiurlparam=pageN-1600px`), so

@@ -63,6 +63,7 @@ Modules marked **legacy** are only used when `BIRDDOG_DATABASE_URL` is unset
 | `service.py` | Flask app: `create_app()`, all HTTP routes, `start_runtime_once()`. Local dev entry point: `python -m birddog.service`. |
 | `application.py` (repo root) | WSGI entry point for gunicorn (`application:application`). |
 | `place_confirm.py` | Blueprint `bp` for the Confirm places page (`/places/confirm`, JSON under `/api/places/...`; template `place_confirm.html`, `static/js/place_confirm.js`), registered by `service.py`. Decisions are per place and book; the rule and the linking are SQL: `app.place_decide()`, `views.places__confirmation_status` (migration 024). Cyrillic location searches go through `translit.py`. |
+| `book_batches.py` | Message Batches mode of `read_books` / `transcribe_books` (`use_batch`): submit within budget, poll, collect results by `custom_id`, finish books. |
 | `translit.py` | Latin spellings of a Cyrillic place name (Ukrainian BGN and national, Russian; pre-1918 letters) for searching `core.location`. |
 | `excel.py` | Excel export (`/download`). Still runs inside the web app; imported by `service.py` and `runtime.py`. |
 | `core.py` | Page and archive model and scraping logic (its docstring: "Ukraine records archive monitor and scraper"). Imported by `service.py`, `runtime.py`, `significance.py`, `excel.py`. Not reviewed in depth for this pack. |
@@ -157,6 +158,7 @@ next free number is 022.
 | `023_book_transcripts.sql` | Book transcription: `core.book_transcript_queue`, `core.book_transcript` (text, entries, places per page and model), `core.book_entry`, `core.book_entry_place` (matched `location_id`); FTS ('simple') and trigram indexes; `core.search_books(q)`; views `books__transcripts`, `books__entries`, `books__entry_places`, `books__transcription_progress`. |
 | `024_book_years_place_guesses.sql` | `core.book_year_range()` and entry years falling back to the book's year in `views.books__entries` / `books__entry_places`; `core.place_guess`, `core.place_key()`, `core.km_between()`, `views.books__unmatched_places` (rough positions and 3 nearest locations).; Confirm places: `app.place_confirmation`, `app.place_link`, `views.places__mentions`, `views.places__to_confirm`, `views.places__confirmation_status`, `app.place_decide()`; grants for `birddog_web`. |
 | `026_book_transcript_names.sql` | `core.book_transcript.prompt` ('names'), queue status `reread_names`, `core.name_unreadable()`, `core.names_uncertain()`; appends `name_unreadable`, `names_uncertain` to `views.books__entries` and name counts to `views.books__transcription_progress`. |
+| `027_llm_batches.sql` | `core.llm_batch`, `core.llm_batch_request` (Message Batches of `read_books` / `transcribe_books`), `views.books__batches`. |
 | `018_user_sync.sql` | `app.user_sync`: per account and tool, the result of copying Birddog accounts into the other tools (`user_sync.py`). |
 | `016_alert_state.sql` | `app.watch.watcher` (jsonb watcher header) and `app.alert_state.history` (jsonb resolve history), a trigger deriving `modified`, `last_resolved`, `significance`, `sig_span`; grants `core.search()` to `birddog_web`. |
 
