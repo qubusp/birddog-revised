@@ -59,6 +59,7 @@
         <tr><td>Be told when an archive I research changes on the wiki</td><td>{{ tool_link('birddog', 'Birddog') }}</td><td>Watchlists tab → Add Archive; changes appear under Alerts</td></tr>
         <tr><td>Look up or correct a record (document type, place, status)</td><td>{{ tool_link('mathesar', 'Mathesar') }}</td><td>Schema <code>core</code> to edit; schema <code>views</code> for ready-made, read-only lists</td></tr>
         <tr><td>Check the places Claude found in a book, against the scan</td><td>{{ tool_link('mathesar', 'Mathesar') }} or {{ tool_link('jupyterhub', 'JupyterHub') }}</td><td><code>views.books__places</code> and <code>views.books__place_mentions</code> (each with a link to the page); or the notebook <code>examples/book_places_review.ipynb</code> to mark places right or wrong</td></tr>
+        <tr><td>Search the full text of transcribed books, or find a person in the registers</td><td>{{ tool_link('grafana', 'Grafana') }} or {{ tool_link('mathesar', 'Mathesar') }}</td><td>Dashboard <i>Book transcriptions</i> (search box, entries by event and year, people per place on the map); <code>views.books__transcripts</code> (page text) and <code>views.books__entries</code> (one row per register entry), each with a link to the page scan</td></tr>
         <tr><td>Approve a large book for reading</td><td>{{ tool_link('mathesar', 'Mathesar') }}</td><td><code>views.books__needs_approval</code> lists them; set <code>status</code> to <i>approved</i> or <i>rejected</i> on the same row in <code>core.book_read</code></td></tr>
         <tr><td>See communities and book places on a map</td><td>{{ tool_link('grafana', 'Grafana') }}</td><td>Dashboards: <i>Archive map</i>, <i>Books map</i></td></tr>
         <tr><td>See what reading the books costs</td><td>{{ tool_link('grafana', 'Grafana') }} or {{ tool_link('jupyterhub', 'JupyterHub') }}</td><td>Dashboard <i>Book reading: progress and costs</i>; notebook <code>examples/token_costs.ipynb</code></td></tr>
@@ -102,7 +103,7 @@
     <ol>
       <li><b>The archives publish scans</b> on uk.wikisource.org and Wikimedia Commons.</li>
       <li><b>Pipelines copy them into the catalog</b> every night: pages, files, their metadata and changes (run by Airflow).</li>
-      <li><b>Claude reads the scanned books</b> page by page: places, and soon the full text and each register entry. Big books wait for an admin's approval first.</li>
+      <li><b>Claude reads the scanned books</b> page by page: the full text, each register entry, and the places named. Big books wait for an admin's approval first.</li>
       <li><b>People check and correct</b> what was found, in Mathesar or the review notebook.</li>
       <li><b>Everyone uses the results</b>: search and alerts in Birddog, maps in Grafana, analysis in JupyterHub, and the map of where each value came from in Marmot.</li>
     </ol>
