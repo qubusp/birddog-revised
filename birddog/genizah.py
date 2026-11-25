@@ -28,6 +28,7 @@ class Tool:
     # how a Birddog user signs in there: "birddog" (checked against Birddog
     # itself), "synced" (account copied by user_sync.py) or "separate"
     login: str = "synced"
+    path: str = ""          # page within the tool's site, e.g. places/confirm
 
 
 TOOLS = (
@@ -35,6 +36,10 @@ TOOLS = (
          "Follows Ukrainian archival records on uk.wikisource.org.",
          "Browse archives, watch the files you research, get alerts when pages change.",
          "binoculars", login="birddog"),
+    Tool("places", "Confirm places", "birddog",
+         "Check where the places named in the books are.",
+         "Compare each place with the scan and confirm its town, pick a nearby one, or mark it not a place.",
+         "geo-alt", login="birddog", path="places/confirm"),
     Tool("mathesar", "Mathesar", "data",
          "The catalog of documents, pages and places, as spreadsheets.",
          "Look up records and correct them: document types, places, transcription status.",
@@ -75,7 +80,7 @@ def _domain_from_host(host):
 def _url(tool, host):
     apps_domain = os.environ.get("GENIZAH_DOMAIN") or _domain_from_host(host)
     domain = (os.environ.get("GENIZAH_AIRFLOW_DOMAIN") or apps_domain) if tool.data_box else apps_domain
-    return f"https://{tool.subdomain}.{domain}/"
+    return f"https://{tool.subdomain}.{domain}/{tool.path}"
 
 
 def _account(tool, sync_status):

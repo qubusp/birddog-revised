@@ -75,6 +75,8 @@ serializer = URLSafeTimedSerializer(app.secret_key)
 # Airflow 2 API for Marmot's Airflow connector, answered from Airflow 3 (internal host only)
 from birddog import airflow_v1  # noqa: E402
 app.register_blueprint(airflow_v1.bp)
+from birddog import place_confirm  # noqa: E402
+app.register_blueprint(place_confirm.bp)
 
 SMTP_SERVER = os.getenv('BIRDDOG_SMTP_SERVER', '')  # For password reset
 SMTP_PORT = os.getenv('BIRDDOG_SMTP_PORT', '')  # For password reset
