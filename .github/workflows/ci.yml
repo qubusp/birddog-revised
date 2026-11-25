@@ -38,8 +38,20 @@ jobs:
       - name: Unit tests
         env:
           BIRDDOG_USE_LOCAL_CACHE: "True"
+        # Deselected: legacy tests that need services a runner doesn't have:
+        # NocoDB settings (test_updater's DatabaseUpdater classes), AWS
+        # DynamoDB (test_store's dynamodb cases) and the live wiki
+        # (test_core's ArchiveWatcher). test_excel writes to var/.
         run: |
+          mkdir -p var
           python -m pytest test -q -p no:cacheprovider \
             --ignore=test/test_database.py \
             --ignore=test/test_location_extraction.py \
-            --ignore=test/test_location_manager.py
+            --ignore=test/test_location_manager.py \
+            --deselect test/test_core.py::Test::test_ArchiveWatcher \
+            --deselect test/test_store.py::TestStores::test_dynamodb_batch_parallelism_correctness \
+            --deselect test/test_store.py::TestStores::test_key_value_store \
+            --deselect test/test_store.py::TestStores::test_string_queue \
+            --deselect test/test_updater.py::TestSetDocLookupFields \
+            --deselect test/test_updater.py::TestOwnerIds \
+            --deselect test/test_updater.py::TestSelectOwningPage
