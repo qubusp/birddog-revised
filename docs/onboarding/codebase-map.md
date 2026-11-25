@@ -62,6 +62,7 @@ Modules marked **legacy** are only used when `BIRDDOG_DATABASE_URL` is unset
 |---|---|
 | `service.py` | Flask app: `create_app()`, all HTTP routes, `start_runtime_once()`. Local dev entry point: `python -m birddog.service`. |
 | `application.py` (repo root) | WSGI entry point for gunicorn (`application:application`). |
+| `place_confirm.py` | Blueprint `bp` for the Confirm places page (`/places/confirm`, JSON under `/api/places/...`; template `place_confirm.html`, `static/js/place_confirm.js`), registered by `service.py`. The rule and the linking are SQL: `app.place_decide()`, `views.places__confirmation_status` (migration 024). |
 | `excel.py` | Excel export (`/download`). Still runs inside the web app; imported by `service.py` and `runtime.py`. |
 | `core.py` | Page and archive model and scraping logic (its docstring: "Ukraine records archive monitor and scraper"). Imported by `service.py`, `runtime.py`, `significance.py`, `excel.py`. Not reviewed in depth for this pack. |
 | `utility.py` | Shared helpers, for example the multilingual text items (`form_text_item`, `get_text`, `match_text`). Imported almost everywhere. |
@@ -153,7 +154,7 @@ next free number is 022.
 | `021_location_coordinates.sql` | `latitude`, `longitude`, `region`, `jewish_population` on `core.location` (from the NocoDB raw records); Grafana views `views.map__locations`, `views.map__book_places`, `views.stats__books`; grants for `birddog_reader`. |
 | `022_location_name_encoding.sql` | `core.repair_mojibake(text)`: undoes UTF-8 read as Windows-1252 where it round-trips cleanly; repairs the names in `core.location` (both NocoDB location transforms call it too, since `raw.nocodb_record` keeps the broken text). |
 | `023_book_transcripts.sql` | Book transcription: `core.book_transcript_queue`, `core.book_transcript` (text, entries, places per page and model), `core.book_entry`, `core.book_entry_place` (matched `location_id`); FTS ('simple') and trigram indexes; `core.search_books(q)`; views `books__transcripts`, `books__entries`, `books__entry_places`, `books__transcription_progress`. |
-| `024_book_years_place_guesses.sql` | `core.book_year_range()` and entry years falling back to the book's year in `views.books__entries` / `books__entry_places`; `core.place_guess`, `core.place_key()`, `core.km_between()`, `views.books__unmatched_places` (rough positions and 3 nearest locations). |
+| `024_book_years_place_guesses.sql` | `core.book_year_range()` and entry years falling back to the book's year in `views.books__entries` / `books__entry_places`; `core.place_guess`, `core.place_key()`, `core.km_between()`, `views.books__unmatched_places` (rough positions and 3 nearest locations).; Confirm places: `app.place_confirmation`, `app.place_link`, `views.places__mentions`, `views.places__to_confirm`, `views.places__confirmation_status`, `app.place_decide()`; grants for `birddog_web`. |
 | `018_user_sync.sql` | `app.user_sync`: per account and tool, the result of copying Birddog accounts into the other tools (`user_sync.py`). |
 | `016_alert_state.sql` | `app.watch.watcher` (jsonb watcher header) and `app.alert_state.history` (jsonb resolve history), a trigger deriving `modified`, `last_resolved`, `significance`, `sig_span`; grants `core.search()` to `birddog_web`. |
 
