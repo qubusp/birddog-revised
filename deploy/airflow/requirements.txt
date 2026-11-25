@@ -13,3 +13,4 @@ psutil
 boto3
 google-cloud-translate==3.23.0
 dag-factory==1.1.0
+anthropic==2.13.0

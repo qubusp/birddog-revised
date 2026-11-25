@@ -46,6 +46,26 @@ Only Caddy (80 and 443) is meant to be reachable from the internet.
 
 ## Deploying code
 
+### From GitHub (the normal way)
+
+GitHub, **Actions**, workflow **Deploy**, **Run workflow** on branch
+`day0-stack`: pick the target (`both`, `data`, `apps`), keep **Dry run** ticked,
+run it and read the run summary (`.env` keys to add, migrations to run, rsync
+change list, container drift). Then run it again with **Dry run** unticked.
+The workflow runs the unit tests, then the Ansible playbooks in
+[deploy/ansible](../../deploy/ansible/README.md) (`deploy-data.yml` before
+`deploy-apps.yml`), and ships exactly the commit at the head of the branch.
+They do what the sh scripts below do, in the same order. `restart_airflow`,
+`restart_postgres` and `init_roles` wait for the owner's approval (GitHub
+environment `production-restart`). Every push to `day0-stack` also gets an
+automatic dry run (workflow **Deploy check**). From a laptop:
+`cd deploy/ansible && ansible-playbook deploy-data.yml --check --diff`; a real
+run refuses a checkout with uncommitted or unpushed changes. Inputs,
+approvals, key rotation and the manual state no deploy touches:
+[deploy/ansible/README.md](../../deploy/ansible/README.md).
+
+### Fallback: the sh scripts
+
 One script per box, run from the repo root of the checkout you want to ship.
 **Run each with `--dry-run` first**: it changes nothing on the server and shows
 what rsync would copy or delete, which `.env` keys are missing, which

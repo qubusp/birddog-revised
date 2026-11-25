@@ -1,0 +1,18 @@
+# One migration file (included per file by migrations.yml). The record is
+# written in the same psql session, after the file, so it exists only if
+# every statement of the file succeeded (ON_ERROR_STOP).
+- name: "Migrations | apply {{ mig.name }}"
+  ansible.builtin.command: docker compose exec -T postgres psql -U birddog -d birddog -X -q -v ON_ERROR_STOP=1
+  changed_when: true
+  args:
+    chdir: "{{ deploy_dir }}"
+    stdin: |
+      SET lock_timeout = '{{ lock_timeout }}';
+      {{ lookup('ansible.builtin.file', mig.path, rstrip=false) }}
+
+      INSERT INTO public.schema_migrations (filename, checksum) VALUES ('{{ mig.name }}', '{{ mig.sha256 }}')
+      ON CONFLICT (filename) DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = now();
+
+- name: "Migrations | applied {{ mig.name }}"
+  ansible.builtin.set_fact:
+    report: "{{ report + ['migrations: applied ' ~ mig.name] }}"

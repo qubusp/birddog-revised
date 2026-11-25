@@ -1,0 +1,30 @@
+# Prints the report and, when summary_file is set (CI: $GITHUB_STEP_SUMMARY),
+# appends it there as markdown. Runs on the controller, also in check mode.
+
+- name: Summary
+  ansible.builtin.debug:
+    msg: "{{ report }}"
+
+- name: Summary | write {{ summary_file }}
+  ansible.builtin.shell: cat >> "$SUMMARY_FILE"
+  args:
+    stdin: |
+      ### {{ box_name | capitalize }} ({{ deploy_target }}){{ ': dry run (nothing changed)' if ansible_check_mode else '' }}
+
+      {% for line in report %}
+      - {{ line | replace('<', '&lt;') }}
+      {% endfor %}
+
+      <details><summary>rsync change list ({{ rsync_changes | default([]) | length }})</summary>
+
+      ```
+      {{ (rsync_changes | default([]) | join('\n')) or 'no changes' }}
+      ```
+      </details>
+
+  environment:
+    SUMMARY_FILE: "{{ summary_file }}"
+  delegate_to: localhost
+  changed_when: false
+  check_mode: false
+  when: summary_file | length > 0

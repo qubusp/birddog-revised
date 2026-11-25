@@ -1,0 +1,13 @@
+# One role script as postgres (included per script by init-roles.yml).
+- name: "Roles | run db/init/{{ role.file }}"
+  ansible.builtin.shell: |
+    {% if role.var %}
+    {{ role.var }}="$(sed -n 's/^{{ role.var }}=//p' .env)" docker compose exec -T -e {{ role.var }} postgres bash -s
+    {% else %}
+    docker compose exec -T postgres bash -s
+    {% endif %}
+  args:
+    chdir: "{{ deploy_dir }}"
+    stdin: "{{ lookup('ansible.builtin.file', repo_root ~ '/deploy/db/init/' ~ role.file, rstrip=false) }}"
+  changed_when: true
+  no_log: true

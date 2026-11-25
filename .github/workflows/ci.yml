@@ -1,0 +1,57 @@
+# Unit tests on every pull request to main and every push to day0-stack.
+# Branch protection on main requires the "tests" job to pass before merging.
+# Tests that need Postgres, Airflow, NocoDB or the network skip themselves
+# when their settings are missing (docs/onboarding/local-dev.md); the three
+# legacy NocoDB files below fail at import without BIRDDOG_NOCODB_ENV, so they
+# are left out here.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [day0-stack]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest pyyaml
+      - name: Unit tests
+        env:
+          BIRDDOG_USE_LOCAL_CACHE: "True"
+        # Deselected: legacy tests that need services a runner doesn't have:
+        # NocoDB settings (test_updater's DatabaseUpdater classes), AWS
+        # DynamoDB (test_store's dynamodb cases) and the live wiki
+        # (test_core's ArchiveWatcher). test_excel writes to var/.
+        run: |
+          mkdir -p var
+          python -m pytest test -q -p no:cacheprovider \
+            --ignore=test/test_database.py \
+            --ignore=test/test_location_extraction.py \
+            --ignore=test/test_location_manager.py \
+            --deselect test/test_core.py::Test::test_ArchiveWatcher \
+            --deselect test/test_store.py::TestStores::test_dynamodb_batch_parallelism_correctness \
+            --deselect test/test_store.py::TestStores::test_key_value_store \
+            --deselect test/test_store.py::TestStores::test_string_queue \
+            --deselect test/test_updater.py::TestSetDocLookupFields \
+            --deselect test/test_updater.py::TestOwnerIds \
+            --deselect test/test_updater.py::TestSelectOwningPage

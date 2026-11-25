@@ -1,0 +1,23 @@
+# Which running containers no longer match the compose config or their image,
+# i.e. what a plain `docker compose up -d` would recreate. Read only: the
+# server runs sh/lib/remote-drift.sh, streamed from this checkout (the same
+# helper the sh scripts use). Input: drift_services. Output: drift_lines and
+# drift_found (the services with a DRIFT line).
+
+- name: "Drift | {{ drift_services | join(', ') }}"
+  ansible.builtin.command:
+    argv: "{{ ['bash', '-s', '--'] + drift_services }}"
+    chdir: "{{ deploy_dir }}"
+    stdin: "{{ lookup('ansible.builtin.file', repo_root ~ '/sh/lib/remote-drift.sh', rstrip=false) }}"
+  register: drift_run
+  changed_when: false
+  check_mode: false
+
+- name: Drift | collect
+  ansible.builtin.set_fact:
+    drift_lines: "{{ drift_run.stdout_lines | map('trim') | list }}"
+    drift_found: "{{ drift_run.stdout_lines | map('trim') | select('match', '^DRIFT ') | map('regex_replace', '^DRIFT ([^:]+):.*$', '\\1') | list }}"
+
+- name: Drift | report
+  ansible.builtin.set_fact:
+    report: "{{ report + (drift_lines | map('regex_replace', '^', 'containers: ') | list) }}"

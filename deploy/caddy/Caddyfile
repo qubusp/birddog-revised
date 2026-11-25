@@ -34,3 +34,8 @@ birddog.{$PUBLIC_DOMAIN} {
 	encode zstd gzip
 	reverse_proxy birddog-web:8000
 }
+# Genizah, the entry page for every tool (birddog/genizah.py), served by birddog-web
+genizah.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy birddog-web:8000
+}

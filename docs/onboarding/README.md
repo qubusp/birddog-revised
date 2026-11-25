@@ -51,11 +51,12 @@ and reached through an SSH tunnel.
 | `airflow-apiserver` | `birddog-airflow:local` (apache/airflow:3.3.2) | `airflow.` | 8080 | Airflow UI and REST API |
 | `airflow-scheduler`, `airflow-dag-processor` | same image | - | - | LocalExecutor; task processes run in the scheduler container |
 | `airflow-init` | same image, one-shot | - | - | DB migrate, admin user, pool `wiki_api` (3 slots) |
-| `birddog-web` | `birddog-web:local` (python 3.12, gunicorn) | `birddog.` | 8084 | Flask web app, reads Postgres, starts DAG runs via REST |
+| `birddog-web` | `birddog-web:local` (python 3.12, gunicorn) | `birddog.`, `genizah.` | 8084 | Flask web app, reads Postgres, starts DAG runs via REST. Also serves Genizah on `genizah.`: the entry page linking every tool, behind the Birddog login (`birddog/genizah.py`) |
 | `mathesar` | mathesar/mathesar:0.12.0 | `data.` | 8000 | curator UI, connects as `birddog_ui` |
 | `jupyterhub` | `birddog-jupyterhub:local` | `hub.` | 8001 | shared notebooks, per-user containers as `birddog_reader` |
 | `tooljet` | tooljet-ce:v3.20.256-lts | `apps.` | 8082 | low-code curator app |
 | `saltcorn` | saltcorn/saltcorn:1.6.4 | `saltcorn.` | 8083 | low-code curator app |
+| `grafana` (apps box) | grafana/grafana-oss:13.0.2 | `grafana.` | 8086 | maps and dashboards, read-only as `birddog_reader` (`deploy/grafana/`) |
 
 The `birddog` database has four schemas of ours: `raw` (data as received), `core`
 (cleaned records, the system of record), `app` (web app state) and `views` (curator

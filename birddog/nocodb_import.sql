@@ -158,10 +158,15 @@ ON CONFLICT DO NOTHING;
 INSERT INTO core.location (location_id, modern_location_name, alternate_names,
     c1900_district, c1900_province, c1930_district, c1930_province,
     c1950_district, c1950_province, c2000_district, c2000_province)
+-- raw.nocodb_record holds some names double-encoded (UTF-8 read as
+-- Windows-1252); core.repair_mojibake (migration 022) undoes it where safe.
 SELECT DISTINCT ON (f->>'location_id')
-    f->>'location_id', f->>'modern_location_name', f->>'alternate_names',
-    f->>'c1900_district', f->>'c1900_province', f->>'c1930_district', f->>'c1930_province',
-    f->>'c1950_district', f->>'c1950_province', f->>'c2000_district', f->>'c2000_province'
+    f->>'location_id',
+    core.repair_mojibake(f->>'modern_location_name'), core.repair_mojibake(f->>'alternate_names'),
+    core.repair_mojibake(f->>'c1900_district'), core.repair_mojibake(f->>'c1900_province'),
+    core.repair_mojibake(f->>'c1930_district'), core.repair_mojibake(f->>'c1930_province'),
+    core.repair_mojibake(f->>'c1950_district'), core.repair_mojibake(f->>'c1950_province'),
+    core.repair_mojibake(f->>'c2000_district'), core.repair_mojibake(f->>'c2000_province')
 FROM nc WHERE table_name = 'locations' AND NULLIF(f->>'location_id', '') IS NOT NULL
 ORDER BY f->>'location_id', nocodb_id DESC
 ON CONFLICT (location_id) DO UPDATE SET

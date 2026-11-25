@@ -47,6 +47,8 @@ Modules marked **legacy** are only used when `BIRDDOG_DATABASE_URL` is unset
 | `env.py` | `detect_environment()`, `store_backend()` (see below), per-base table-name suffixes (legacy NocoDB base split). |
 | `store.py` | `KeyValueStore` and `StringQueue`, one implementation per backend: Postgres (`app.kv`, `app.string_queue`), DynamoDB, SQLite. |
 | `log.py` | `EventLogger` (request log) and `LogService` / service usage log, per backend. |
+| `user_sync.py` | Copies Birddog accounts into Airflow, Mathesar, Marmot, Saltcorn, ToolJet and Grafana with the same password, whenever the plain password is at hand (account creation, login, password change or reset); role changes and removals go out without one. Runs in birddog-web on the apps box; a tool is skipped unless its `BIRDDOG_SYNC_*` settings are set. Results in `app.user_sync`. |
+| `genizah.py` | Genizah, the entry page at `genizah.<PUBLIC_DOMAIN>` listing every tool and the person's account state in each. |
 | `user.py`, `user_store.py` | Accounts, watchlists, preferences. With the Postgres backend, `user_store.py` uses `app.user_account`, `app.watch`, `app.user_preference`. |
 | `cache.py` | Object cache for large payloads: local filesystem under `.cache/` or S3. Postgres backend means local filesystem. |
 | `watcher.py` | Watchlist change detection and alert state. Uses the store; on Postgres the state lives in `app.watch.watcher` and `app.alert_state` through `alert_store.py` (migration 016), which copies old `app.kv` `bd_watchers` rows once on first use. |
@@ -60,6 +62,10 @@ Modules marked **legacy** are only used when `BIRDDOG_DATABASE_URL` is unset
 |---|---|
 | `service.py` | Flask app: `create_app()`, all HTTP routes, `start_runtime_once()`. Local dev entry point: `python -m birddog.service`. |
 | `application.py` (repo root) | WSGI entry point for gunicorn (`application:application`). |
+| `place_confirm.py` | Blueprint `bp` for the Confirm places page (`/places/confirm`, JSON under `/api/places/...`; template `place_confirm.html`, `static/js/place_confirm.js`), registered by `service.py`. Decisions are per place and book; the rule and the linking are SQL: `app.place_decide()`, `views.places__confirmation_status` (migration 024). Cyrillic location searches go through `translit.py`. Each card has a small map (rough position, current match, the 3 nearest towns; clicking a town picks it): `list_places` adds the towns' coordinates from `core.location`, and the map is `static/js/birddog_map.js` (Leaflet from jsDelivr via `templates/_leaflet.html`, the same grey Esri basemap as Grafana). |
+| `place_map.py` | Blueprint `bp` for the Map page (`/map`, data at `/api/map`; template `place_map.html`, `static/js/place_map.js` on `birddog_map.js`), registered by `service.py`, signed-in users only. Three layers: communities (`views.map__locations`), places the books name (`views.map__book_places`, one marker per location), and rough positions not confirmed yet (`views.books__unmatched_places`); popups link to the book scan and to Confirm places (`/places/confirm?book=…&group=…`). The Grafana maps stay the place for analysis. |
+| `book_batches.py` | Message Batches mode of `read_books` / `transcribe_books` (`use_batch`): submit within budget, poll, collect results by `custom_id`, finish books. |
+| `translit.py` | Latin spellings of a Cyrillic place name (Ukrainian BGN and national, Russian; pre-1918 letters) for searching `core.location`. |
 | `excel.py` | Excel export (`/download`). Still runs inside the web app; imported by `service.py` and `runtime.py`. |
 | `core.py` | Page and archive model and scraping logic (its docstring: "Ukraine records archive monitor and scraper"). Imported by `service.py`, `runtime.py`, `significance.py`, `excel.py`. Not reviewed in depth for this pack. |
 | `utility.py` | Shared helpers, for example the multilingual text items (`form_text_item`, `get_text`, `match_text`). Imported almost everywhere. |
@@ -131,7 +137,7 @@ Kept for legacy mode, and for code that still imports them:
 On the server, `sh/deploy-data` applies new files before syncing code and
 records them in `public.schema_migrations`. The `migrate` service (`docker
 compose run --rm migrate`) re-runs all of them. Every file is written to be re-run. **010 and 015 do not exist**; the
-next free number is 017.
+next free number is 022.
 
 | File | One line |
 |---|---|
@@ -148,6 +154,14 @@ next free number is 017.
 | `012_web_role.sql` | Grants to `birddog_web`: read `core`, CRUD on `app`, write `core.archive_root`, nothing in `raw`. |
 | `013_source_kit.sql` | `raw.source_run`, `raw.source_record`, source-kit comments. |
 | `014_doc_matching.sql` | `fp_error` on `core.document` and `core.ftp_entry`; size and link-table indexes for duplicate and FTP matching. |
+| `021_location_coordinates.sql` | `latitude`, `longitude`, `region`, `jewish_population` on `core.location` (from the NocoDB raw records); Grafana views `views.map__locations`, `views.map__book_places`, `views.stats__books`; grants for `birddog_reader`. |
+| `022_location_name_encoding.sql` | `core.repair_mojibake(text)`: undoes UTF-8 read as Windows-1252 where it round-trips cleanly; repairs the names in `core.location` (both NocoDB location transforms call it too, since `raw.nocodb_record` keeps the broken text). |
+| `023_book_transcripts.sql` | Book transcription: `core.book_transcript_queue`, `core.book_transcript` (text, entries, places per page and model), `core.book_entry`, `core.book_entry_place` (matched `location_id`); FTS ('simple') and trigram indexes; `core.search_books(q)`; views `books__transcripts`, `books__entries`, `books__entry_places`, `books__transcription_progress`. |
+| `024_book_years_place_guesses.sql` | `core.book_year_range()` and entry years falling back to the book's year in `views.books__entries` / `books__entry_places`; `core.place_guess`, `core.place_key()`, `core.km_between()`, `views.books__unmatched_places` (rough positions and 3 nearest locations).; Confirm places: `app.place_confirmation`, `app.place_link`, `views.places__mentions`, `views.places__to_confirm`, `views.places__confirmation_status`, `app.place_decide()`; grants for `birddog_web`. |
+| `025_web_map_grants.sql` | `birddog_web` may read `views.map__locations` and `views.map__book_places` (the Map page). |
+| `026_book_transcript_names.sql` | `core.book_transcript.prompt` ('names'), queue status `reread_names`, `core.name_unreadable()`, `core.names_uncertain()`; appends `name_unreadable`, `names_uncertain` to `views.books__entries` and name counts to `views.books__transcription_progress`. |
+| `027_llm_batches.sql` | `core.llm_batch`, `core.llm_batch_request` (Message Batches of `read_books` / `transcribe_books`), `views.books__batches`. |
+| `018_user_sync.sql` | `app.user_sync`: per account and tool, the result of copying Birddog accounts into the other tools (`user_sync.py`). |
 | `016_alert_state.sql` | `app.watch.watcher` (jsonb watcher header) and `app.alert_state.history` (jsonb resolve history), a trigger deriving `modified`, `last_resolved`, `significance`, `sig_span`; grants `core.search()` to `birddog_web`. |
 
 ### Legacy vs Postgres mode

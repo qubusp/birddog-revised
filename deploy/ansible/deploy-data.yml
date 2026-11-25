@@ -1,0 +1,158 @@
+# Deploys the data box (Postgres + Airflow; deploy/two-box.md). Port of
+# sh/deploy-data, same steps in the same order:
+#   1. box check: the remote checkout exists and deploy/.env selects the
+#      data-box override (refuses to run against the apps box)
+#   2. adds missing deploy/.env keys (random values made on the server)
+#   3. init_roles (optional): the role scripts as postgres
+#   4. new or changed migrations, BEFORE any code is synced
+#   5. rsync of the repo (DAGs and birddog/ are bind-mounted: no restart)
+#   6. reports which of postgres / airflow-* drifted; recreates them only
+#      with restart_postgres / restart_airflow (the owner's OK is needed)
+#   7. Caddy: recreated on drift, restarted when Caddyfile.databox changed
+# Dry run: --check --diff (changes nothing). README.md has the details.
+- name: Deploy the data box
+  hosts: databox
+  gather_facts: false
+  vars:
+    report: []
+  tasks:
+    - name: Deploy
+      block:
+        - name: Preflight
+          ansible.builtin.import_tasks: tasks/preflight.yml
+
+        - name: Ensure deploy/.env keys
+          ansible.builtin.import_tasks: tasks/ensure-env.yml
+
+        - name: Role scripts
+          ansible.builtin.import_tasks: tasks/init-roles.yml
+          when: init_roles | bool
+
+        - name: Migrations
+          ansible.builtin.import_tasks: tasks/migrations.yml
+
+        - name: Sync the code
+          ansible.builtin.import_tasks: tasks/sync.yml
+
+        - name: Note changed Airflow image inputs
+          ansible.builtin.set_fact:
+            report: "{{ report + ['NOTE: the Airflow image inputs changed; they take effect only with restart_airflow'] }}"
+          when: rsync_changes | select('search', '^[<>]f\S* deploy/airflow/(Dockerfile|requirements\.txt)$') | list | length > 0
+
+        - name: Postgres and Airflow drift
+          ansible.builtin.import_tasks: tasks/drift.yml
+          vars:
+            drift_services: "{{ ['postgres'] + airflow_services }}"
+
+        - name: Point out what a plain up -d would recreate
+          ansible.builtin.set_fact:
+            report: >-
+              {{ report + ['a plain `docker compose up -d` would recreate the DRIFT services above (' ~ drift_found | join(', ')
+                 ~ '); never done here without restart_airflow / restart_postgres (owner''s OK)'] }}
+          when: drift_found | length > 0
+
+        - name: Postgres | would recreate (restart_postgres)
+          ansible.builtin.set_fact:
+            report: "{{ report + ['would run: docker compose up -d --no-deps postgres'] }}"
+          when: restart_postgres | bool and ansible_check_mode
+
+        - name: Postgres | recreate if changed (restart_postgres)
+          ansible.builtin.command: docker compose up -d --no-deps postgres
+          changed_when: true
+          args:
+            chdir: "{{ deploy_dir }}"
+          when: restart_postgres | bool and not ansible_check_mode
+
+        - name: Airflow | would rebuild and recreate (restart_airflow)
+          ansible.builtin.set_fact:
+            report: >-
+              {{ report + ['would run: docker compose build airflow-scheduler',
+                           'would run: docker compose run --rm --no-deps airflow-init',
+                           'would run: docker compose up -d --no-deps ' ~ airflow_services | join(' ')] }}
+          when: restart_airflow | bool and ansible_check_mode
+
+        - name: Airflow | rebuild, airflow-init, recreate (restart_airflow)
+          when: restart_airflow | bool and not ansible_check_mode
+          block:
+            - name: Airflow | build the image
+              ansible.builtin.command: docker compose build airflow-scheduler
+              changed_when: true
+              args:
+                chdir: "{{ deploy_dir }}"
+
+            - name: Airflow | airflow-init
+              ansible.builtin.shell: docker compose run --rm --no-deps airflow-init </dev/null
+              changed_when: true
+              args:
+                chdir: "{{ deploy_dir }}"
+
+            - name: Airflow | recreate the changed services
+              ansible.builtin.command:
+                argv: "{{ ['docker', 'compose', 'up', '-d', '--no-deps'] + airflow_services }}"
+                chdir: "{{ deploy_dir }}"
+              changed_when: true
+
+            - name: Airflow | report
+              ansible.builtin.set_fact:
+                report: "{{ report + ['airflow: rebuilt, airflow-init ran, up -d --no-deps ' ~ airflow_services | join(' ')] }}"
+
+        - name: Caddy drift
+          ansible.builtin.import_tasks: tasks/drift.yml
+          vars:
+            drift_services: [caddy]
+
+        - name: Caddy | is the Caddyfile stale
+          ansible.builtin.import_tasks: tasks/caddy-stale.yml
+
+        - name: Caddy | decide
+          ansible.builtin.set_fact:
+            caddy_action: "{{ 'recreate' if drift_found else ('restart' if caddy_stale | bool else 'none') }}"
+
+        - name: Caddy | recreate (drift)
+          ansible.builtin.command: docker compose up -d --no-deps caddy
+          changed_when: true
+          args:
+            chdir: "{{ deploy_dir }}"
+          when: caddy_action == 'recreate' and not ansible_check_mode
+
+        - name: Caddy | restart (Caddyfile changed)
+          ansible.builtin.command: docker compose restart caddy
+          changed_when: true
+          args:
+            chdir: "{{ deploy_dir }}"
+          when: caddy_action == 'restart' and not ansible_check_mode
+
+        - name: Caddy | report
+          ansible.builtin.set_fact:
+            report: >-
+              {{ report + ['caddy: ' ~ {'recreate': 'docker compose up -d --no-deps caddy (config drift)',
+                                        'restart': 'docker compose restart caddy (' ~ caddyfile ~ ' changed)',
+                                        'none': 'config unchanged'}[caddy_action]
+                           ~ (' (would run)' if ansible_check_mode and caddy_action != 'none' else '')] }}
+
+        - name: Status
+          ansible.builtin.command: !unsafe "docker compose ps --format 'table {{.Service}}\t{{.Status}}'"  # noqa: jinja[invalid]
+          args:
+            chdir: "{{ deploy_dir }}"
+          register: compose_ps
+          changed_when: false
+          check_mode: false
+
+        - name: Status | show
+          ansible.builtin.debug:
+            msg: "{{ compose_ps.stdout_lines }}"
+
+      rescue:
+        - name: Record the failure
+          ansible.builtin.set_fact:
+            report: "{{ report + ['**FAILED** at `' ~ ansible_failed_task.name ~ '`: ' ~ (ansible_failed_result.msg | default('see the log'))] }}"
+
+        - name: Summary (failed)
+          ansible.builtin.import_tasks: tasks/summary.yml
+
+        - name: Stop
+          ansible.builtin.fail:
+            msg: "{{ ansible_failed_result.msg | default('deploy failed; see above') }}"
+
+    - name: Summary
+      ansible.builtin.import_tasks: tasks/summary.yml

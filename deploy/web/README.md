@@ -6,6 +6,39 @@ role. Background work runs in Airflow: the app triggers DAG runs through the
 Airflow REST API (`birddog/airflow_client.py`, `birddog/airflow_jobs.py`) and
 reports their state.
 
+**Genizah** (`https://genizah.<PUBLIC_DOMAIN>`) is the same app on its own
+host: at `/` it shows the entry page listing every tool (`birddog/genizah.py`,
+`templates/genizah.html`) to signed-in Birddog users, and a sign-in form to
+everyone else. Its session cookie belongs to the genizah host, so people sign in
+there separately from `birddog.`. Tool links are built from `GENIZAH_DOMAIN`
+(apps) and `GENIZAH_AIRFLOW_DOMAIN` (Airflow, on the data box in the two-box
+setup: `DATABOX_PUBLIC_DOMAIN` in the apps box's `.env`). Airflow is shown to
+admins only.
+
+**Accounts in the other tools.** Birddog is where accounts are made: on the
+admin **Users** page (`/users`: add a person, new password, role, remove;
+the generated password is shown once, with a message to send them) or with
+`python -m birddog.user_admin add|password|role|remove|sync|list` in this
+container. Both use the same functions in `birddog/user_admin.py`. `birddog/user_sync.py` copies each account into the other tools,
+with the Birddog email as username and the same password:
+
+| Tool | How | Settings (in `deploy/.env` unless noted) |
+|---|---|---|
+| Airflow | FAB users API as the Admin user `birddog-sync`; Birddog admin → Admin, user → User | `BIRDDOG_SYNC_AIRFLOW_PASSWORD` (made by `sh/deploy-apps`; the user is created once on the data box with the same password) |
+| Mathesar | JSON-RPC as the Mathesar admin; adds the person as a `birddog_ui` collaborator on the birddog database | `MATHESAR_ADMIN_USER`, `MATHESAR_ADMIN_PASSWORD` |
+| Marmot | REST API with the API key of the service account `birddog-sync` (admin role) | `BIRDDOG_SYNC_MARMOT_API_KEY` |
+| Saltcorn | its `users` table directly (bcrypt hash, role 1 admin / 80 user) | `SALTCORN_DB_PASSWORD` |
+| Grafana | admin HTTP API as the built-in `admin`; Birddog admin → Admin and server admin, user → Viewer | `GRAFANA_ADMIN_PASSWORD` (made by `sh/deploy-apps`) |
+| JupyterHub | nothing copied: the hub checks logins against `/login` | `BIRDDOG_LOGIN_URL` (compose) |
+| ToolJet | web API as the workspace admin `birddog-sync@birddog.invalid` (invite, then account setup with the tokens from the user list); password changes write `users.password_digest` (bcrypt) since CE has no API for it; Birddog admin → admin, user → end-user | `BIRDDOG_SYNC_TOOLJET_EMAIL`, `BIRDDOG_SYNC_TOOLJET_PASSWORD`, `TOOLJET_DB_PASSWORD` |
+
+The password is only seen when it is typed or generated, so an account appears
+in a tool at the person's next Birddog or Genizah sign-in after it was made,
+or straight away when made with `user_admin add`. Each tool's own break-glass
+admin (`admin`) is never touched. `app.user_sync` records the last result per
+tool; Genizah shows it. `user_admin remove` deletes the Airflow and Mathesar
+users and deactivates the Marmot and Saltcorn ones archives the ToolJet one and deletes the Grafana one.
+
 | App action | DAG (`dags/yaml/app.yml`) | Task code |
 |---|---|---|
 | Database update of a page (admin), optionally deep | `app_refresh_page` | `dag_tasks_app.refresh_page`, `refresh_subtree` |

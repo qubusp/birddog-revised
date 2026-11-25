@@ -1,0 +1,287 @@
+# Book reading: Claude reads the page images of archive books (PDFs on
+# Commons) and lists the places they name. Probe (Haiku) -> cost gate -> read
+# (Sonnet, Opus for hard pages) -> assemble (Haiku + fuzzy match to
+# core.location). Queue and results: core.book_read / core.book_page
+# (migration 017). Task code: birddog/dag_tasks_books.py -> birddog/books.py.
+#
+# Manual only while piloting. Each run: queues `enqueue` new books (0 = none),
+# probes every pending book, reads approved books until `budget_usd` is spent,
+# assembles finished books. Books over `auto_limit_tokens` wait in
+# views.books__needs_approval: set status to approved/rejected in
+# core.book_read (Mathesar), then trigger the DAG again.
+#
+# Key: the Airflow connection `anthropic` (password = API key); no restart
+# needed to set or change it. Without it the Claude steps skip.
+default:
+  catchup: false
+  max_active_runs: 1
+  default_args:
+    start_date: 2026-11-01
+    retries: 1
+    retry_delay_sec: 300
+  tags: [enrich, books, claude]
+
+read_books:
+  description: Claude reads archive books page by page and lists the places they name
+  schedule: null
+  params:
+    enqueue: 0            # new books to queue this run
+    doc_type: Vitals      # core.document.doc_type to queue from
+    max_pages: ""         # queue only books up to this many pages (empty = any)
+    auto_limit_tokens: 500000
+    budget_usd: 10        # Sonnet + Opus reading; in batch mode, checked before each submit
+    use_batch: true       # Message Batches API (half price, results within 24 h); false = synchronous
+    guess_budget_usd: 1   # guess_places: rough positions for unmatched places
+  tasks:
+    - task_id: enqueue
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.enqueue_books
+      enqueue: "{{ params.enqueue }}"
+      doc_type: "{{ params.doc_type }}"
+      max_pages: "{{ params.max_pages }}"
+      retries: 0
+    - task_id: probe
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.probe_books
+      auto_limit_tokens: "{{ params.auto_limit_tokens }}"
+      pool: llm_api
+      dependencies: [enqueue]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 1
+    - task_id: read_submit
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.batch_submit
+      pipeline: read_books
+      phase: first
+      budget_usd: "{{ params.budget_usd }}"
+      use_batch: "{{ params.use_batch }}"
+      pool: llm_api
+      dependencies: [probe]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 12
+    - task_id: read_wait
+      decorator: airflow.providers.standard.decorators.sensor.sensor_task
+      python_callable: birddog.dag_tasks_books.batch_wait
+      pipeline: read_books
+      use_batch: "{{ params.use_batch }}"
+      mode: reschedule
+      poke_interval: 300
+      timeout: 97200          # 27 h: batches end within 24 h
+      dependencies: [read_submit]
+    - task_id: read_collect
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.batch_collect
+      pipeline: read_books
+      phase: first
+      use_batch: "{{ params.use_batch }}"
+      pool: llm_api
+      dependencies: [read_wait]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 6
+    - task_id: reread_submit
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.batch_submit
+      pipeline: read_books
+      phase: reread
+      budget_usd: "{{ params.budget_usd }}"
+      use_batch: "{{ params.use_batch }}"
+      pool: llm_api
+      dependencies: [read_collect]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 6
+    - task_id: reread_wait
+      decorator: airflow.providers.standard.decorators.sensor.sensor_task
+      python_callable: birddog.dag_tasks_books.batch_wait
+      pipeline: read_books
+      use_batch: "{{ params.use_batch }}"
+      mode: reschedule
+      poke_interval: 300
+      timeout: 97200          # 27 h: batches end within 24 h
+      dependencies: [reread_submit]
+    - task_id: reread_collect
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.batch_collect
+      pipeline: read_books
+      phase: reread
+      use_batch: "{{ params.use_batch }}"
+      pool: llm_api
+      dependencies: [reread_wait]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 6
+    - task_id: read_finish
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.batch_finish
+      pipeline: read_books
+      use_batch: "{{ params.use_batch }}"
+      dependencies: [reread_collect]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 1
+    - task_id: assemble
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.assemble_books
+      pool: llm_api
+      dependencies: [read_finish]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 1
+    - task_id: guess_places
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.guess_places
+      budget_usd: "{{ params.guess_budget_usd }}"
+      pool: llm_api
+      trigger_rule: all_done
+      dependencies: [assemble]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 1
+
+# Full transcription (migration 023, birddog/book_transcripts.py): Sonnet
+# transcribes every page (text, register entries, places); Opus redoes the
+# pages Sonnet marks illegible. Its own queue, core.book_transcript_queue, so
+# read_books' rows stay as they are. `enqueue` queues that many books the place
+# reading finished (status done in core.book_read); `document_ids` (comma list)
+# queues those books. Opus redoes pages Sonnet marked illegible or whose names
+# came back unreadable, asked for its best reading of every name. With
+# `reread_names: true`, the finished books in `document_ids` get only that Opus
+# step, on pages whose best reading still needs it (no Sonnet redo). Each run
+# transcribes queued books until `budget_usd` is
+# spent (interrupted books resume next run), then `index` rebuilds
+# core.book_entry / core.book_entry_place for finished books (no API calls).
+transcribe_books:
+  description: Claude transcribes archive books in full (text, register entries, places)
+  schedule: null
+  params:
+    enqueue: 0            # books finished by read_books to queue this run
+    document_ids: ""      # or these core.document ids, comma-separated
+    reread_names: false   # true: re-read only the names of the finished books in document_ids (Opus)
+    budget_usd: 60
+    use_batch: true       # Message Batches API (half price, results within 24 h); false = synchronous
+    guess_budget_usd: 1   # guess_places: rough positions for unmatched places
+  tasks:
+    - task_id: enqueue
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.enqueue_transcripts
+      enqueue: "{{ params.enqueue }}"
+      document_ids: "{{ params.document_ids }}"
+      reread_names: "{{ params.reread_names }}"
+      retries: 0
+    - task_id: transcribe_submit
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.batch_submit
+      pipeline: transcribe_books
+      phase: first
+      budget_usd: "{{ params.budget_usd }}"
+      use_batch: "{{ params.use_batch }}"
+      pool: llm_api
+      dependencies: [enqueue]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 12
+    - task_id: transcribe_wait
+      decorator: airflow.providers.standard.decorators.sensor.sensor_task
+      python_callable: birddog.dag_tasks_books.batch_wait
+      pipeline: transcribe_books
+      use_batch: "{{ params.use_batch }}"
+      mode: reschedule
+      poke_interval: 300
+      timeout: 97200          # 27 h: batches end within 24 h
+      dependencies: [transcribe_submit]
+    - task_id: transcribe_collect
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.batch_collect
+      pipeline: transcribe_books
+      phase: first
+      use_batch: "{{ params.use_batch }}"
+      pool: llm_api
+      dependencies: [transcribe_wait]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 6
+    - task_id: reread_submit
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.batch_submit
+      pipeline: transcribe_books
+      phase: reread
+      budget_usd: "{{ params.budget_usd }}"
+      use_batch: "{{ params.use_batch }}"
+      pool: llm_api
+      dependencies: [transcribe_collect]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 6
+    - task_id: reread_wait
+      decorator: airflow.providers.standard.decorators.sensor.sensor_task
+      python_callable: birddog.dag_tasks_books.batch_wait
+      pipeline: transcribe_books
+      use_batch: "{{ params.use_batch }}"
+      mode: reschedule
+      poke_interval: 300
+      timeout: 97200          # 27 h: batches end within 24 h
+      dependencies: [reread_submit]
+    - task_id: reread_collect
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.batch_collect
+      pipeline: transcribe_books
+      phase: reread
+      use_batch: "{{ params.use_batch }}"
+      pool: llm_api
+      dependencies: [reread_wait]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 6
+    - task_id: transcribe_finish
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.batch_finish
+      pipeline: transcribe_books
+      use_batch: "{{ params.use_batch }}"
+      dependencies: [reread_collect]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 1
+    - task_id: index
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.index_transcripts
+      trigger_rule: all_done   # index what finished even if a step failed or timed out
+      dependencies: [transcribe_finish]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 1
+    - task_id: guess_places
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.guess_places
+      budget_usd: "{{ params.guess_budget_usd }}"
+      pool: llm_api
+      trigger_rule: all_done
+      dependencies: [index]
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 1
+
+# Rough positions for book places no fuzzy match linked to core.location
+# (birddog/place_guess.py, migration 024): Sonnet at low effort, 25 places per
+# call, into core.place_guess; places already guessed are skipped (delete a
+# row there to guess it again). Shown with the 3 nearest known locations in
+# views.books__unmatched_places. read_books and transcribe_books run the same
+# task at their end; this DAG is for re-runs.
+guess_unmatched_places:
+  description: Claude gives rough positions for book places that matched no known location
+  schedule: null
+  params:
+    budget_usd: 2
+    limit: ""             # at most this many places (empty = all)
+  tasks:
+    - task_id: guess_places
+      decorator: airflow.sdk.task
+      python_callable: birddog.dag_tasks_books.guess_places
+      budget_usd: "{{ params.budget_usd }}"
+      limit: "{{ params.limit }}"
+      pool: llm_api
+      execution_timeout:
+        __type__: datetime.timedelta
+        hours: 1

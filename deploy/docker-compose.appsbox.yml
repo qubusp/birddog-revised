@@ -104,11 +104,55 @@ services:
       MARMOT_DATABASE_PASSWORD: ${MARMOT_DB_PASSWORD}
       MARMOT_SERVER_ENCRYPTION_KEY: ${MARMOT_ENCRYPTION_KEY}
       MARMOT_SERVER_ROOT_URL: https://catalog.${PUBLIC_DOMAIN}
+      # Lets claude.ai's MCP connector register itself (OAuth DCR); without it
+      # Marmot only accepts loopback redirect URIs. Comma-separated hosts.
+      MARMOT_AUTH_DCR_ALLOWED_REDIRECT_HOSTS: claude.ai
     ports:
       - "127.0.0.1:8085:8080"
+  # Grafana (grafana.<PUBLIC_DOMAIN>): maps and dashboards over the birddog
+  # database, read-only as birddog_reader. Datasource and dashboards come from
+  # the repo (grafana/); accounts are copied from Birddog (birddog/user_sync.py).
+  grafana:
+    <<: *databox-hosts
+    image: grafana/grafana-oss:13.0.2
+    restart: unless-stopped
+    # 512m got OOM-killed (idles ~150 MB, spikes on start-up and dashboard loads)
+    mem_limit: 2g
+    environment:
+      # don't update bundled plugins in the background: it fails on the
+      # read-only bundle and adds to the start-up spike
+      GF_PLUGINS_PREINSTALL_AUTO_UPDATE: "false"
+      GF_SERVER_ROOT_URL: https://grafana.${PUBLIC_DOMAIN}
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_DEFAULT_THEME: light
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/archive-map.json
+      JUPYTER_DB_PASSWORD: ${JUPYTER_DB_PASSWORD}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:8086:3000"
   birddog-web:
     <<: *databox-hosts
     depends_on: !reset []
+    environment:
+      # Airflow's UI is on the data box's domain (Genizah's Airflow link)
+      GENIZAH_AIRFLOW_DOMAIN: ${DATABOX_PUBLIC_DOMAIN:-204-12-218-112.sslip.io}
+      # user sync (birddog/user_sync.py): Saltcorn's database and Marmot live here
+      BIRDDOG_SYNC_SALTCORN_DB_URL: postgresql://saltcorn:${SALTCORN_DB_PASSWORD}@apps-postgres:5432/saltcorn
+      BIRDDOG_SYNC_TOOLJET_DB_URL: postgresql://tooljet:${TOOLJET_DB_PASSWORD}@apps-postgres:5432/tooljet
+      BIRDDOG_SYNC_MARMOT_URL: http://marmot:8080
+      BIRDDOG_SYNC_MARMOT_API_KEY: ${BIRDDOG_SYNC_MARMOT_API_KEY:-}
+      BIRDDOG_SYNC_GRAFANA_URL: http://grafana:3000
+      GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
   caddy:
     depends_on: !reset []
     volumes: !override
@@ -118,3 +162,4 @@ services:
 
 volumes:
   apps-pg-data:
+  grafana-data:

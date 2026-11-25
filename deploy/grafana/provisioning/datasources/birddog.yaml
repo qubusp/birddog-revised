@@ -1,0 +1,20 @@
+# The birddog database, read-only (birddog_reader: SELECT on core, raw and the
+# Grafana views; see migrations 021). Over WireGuard to the data box; the
+# password is JUPYTER_DB_PASSWORD, the same role JupyterHub uses.
+apiVersion: 1
+datasources:
+  - name: Birddog
+    uid: birddog
+    type: grafana-postgresql-datasource
+    url: postgres:5432
+    user: birddog_reader
+    isDefault: true
+    editable: false
+    jsonData:
+      database: birddog
+      sslmode: disable
+      postgresVersion: 1600
+      maxOpenConns: 5
+      timescaledb: false
+    secureJsonData:
+      password: ${JUPYTER_DB_PASSWORD}

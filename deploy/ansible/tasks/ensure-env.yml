@@ -1,0 +1,108 @@
+# Adds missing deploy/.env keys (ensure_env + remote-ensure-env.sh). Only key
+# NAMES ever leave the server; new values are generated on the server and
+# appended without being printed. Existing values are never changed. A backup
+# (.env.bak.<time>, mode 600, never synced or deleted by rsync) is made before
+# anything is added.
+
+- name: Env file | parse the spec
+  ansible.builtin.set_fact:
+    env_items: "{{ env_spec | trim | split('\n') | map('trim') | reject('equalto', '') | map('split') | list }}"
+
+- name: Env file | every kind is known
+  ansible.builtin.assert:
+    that: item | length == 2 and item[1] is match('^(hex[0-9]+|b64_[0-9]+|fernet|literal:.*|blank|require)$')
+    fail_msg: "bad env_spec line: {{ item | join(' ') }}"
+    quiet: true
+  loop: "{{ env_items }}"
+  loop_control:
+    label: "{{ item[0] }}"
+
+- name: Env file | key names present (never values)
+  ansible.builtin.shell: |
+    [ -f .env ] || { echo NOFILE; exit 0; }
+    awk -F= '/^[A-Za-z_][A-Za-z0-9_]*=/ { print "HAS " $1 }
+             /^[A-Za-z_][A-Za-z0-9_]*=./ { print "SET " $1 }' .env
+  args:
+    chdir: "{{ deploy_dir }}"
+  register: env_names
+  changed_when: false
+  check_mode: false
+
+- name: Env file | work out what is missing
+  ansible.builtin.set_fact:
+    env_exists: "{{ 'NOFILE' not in env_names.stdout_lines }}"
+    env_missing_required: >-
+      {{ env_items | selectattr(1, 'equalto', 'require') | map(attribute=0)
+         | reject('in', env_names.stdout_lines | select('match', '^SET ') | map('regex_replace', '^SET ', '') | list) | list }}
+    env_to_add: >-
+      {{ env_items | rejectattr(1, 'equalto', 'require')
+         | rejectattr(0, 'in', env_names.stdout_lines | select('match', '^HAS ') | map('regex_replace', '^HAS ', '') | list) | list }}
+
+- name: Env file | report
+  ansible.builtin.set_fact:
+    report: >-
+      {{ report
+         + (['deploy/.env: ' ~ ('would create it' if ansible_check_mode else 'creating it')] if not env_exists else [])
+         + (env_missing_required | map('regex_replace', '^(.*)$', 'deploy/.env: MISSING \1: copy it from the other box (the values must match)') | list)
+         + (env_to_add | map(attribute=0) | map('regex_replace', '^(.*)$', 'deploy/.env: ' ~ ('would add' if ansible_check_mode else 'adding') ~ ' \1') | list)
+         + (['deploy/.env has every key'] if not env_to_add and not env_missing_required else []) }}
+
+# when a key that must come from the other box is missing, write nothing
+- name: Env file | refuse when a required key is missing
+  ansible.builtin.fail:
+    msg: "deploy/.env is missing keys that must come from the data box: {{ env_missing_required | join(', ') }}"
+  when:
+    - env_missing_required | length > 0
+    - not ansible_check_mode
+
+- name: Env file | create it (mode 600)
+  ansible.builtin.file:
+    path: "{{ deploy_dir }}/.env"
+    state: touch
+    mode: "0600"
+  when: not env_exists
+
+- name: Env file | back it up before adding keys
+  ansible.builtin.shell: |
+    set -eu
+    b=".env.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+    (umask 077; cp .env "$b")
+    chmod 600 "$b"
+  changed_when: true
+  args:
+    chdir: "{{ deploy_dir }}"
+  when:
+    - env_exists
+    - env_to_add | length > 0
+    - not ansible_check_mode
+
+# The command holds only the generator; the value goes straight into the file.
+- name: Env file | add the missing keys
+  ansible.builtin.shell: |
+    set -euo pipefail
+    umask 077
+    v=$({{ gen }})
+    printf '%s=%s\n' {{ item[0] | quote }} "$v" >> .env
+  args:
+    chdir: "{{ deploy_dir }}"
+    executable: /bin/bash
+  vars:
+    gen: >-
+      {%- set k = item[1] -%}
+      {%- if k is match('^hex') -%}openssl rand -hex {{ k[3:] | int }}
+      {%- elif k is match('^b64_') -%}openssl rand -base64 {{ k[4:] | int }}
+      {%- elif k == 'fernet' -%}openssl rand -base64 32 | tr '+/' '-_'
+      {%- elif k is match('^literal:') -%}printf '%s' {{ k[8:] | quote }}
+      {%- else -%}printf ''
+      {%- endif -%}
+  changed_when: true
+  loop: "{{ env_to_add }}"
+  loop_control:
+    label: "{{ item[0] }}"
+  when: not ansible_check_mode
+
+- name: Env file | mode 600
+  ansible.builtin.file:
+    path: "{{ deploy_dir }}/.env"
+    mode: "0600"
+  when: env_exists or not ansible_check_mode

@@ -1,0 +1,103 @@
+<!-- templates/place_confirm.html: confirm where book places are (birddog/place_confirm.py, static/js/place_confirm.js) -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Confirm places - Birddog</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+{% include '_assets.html' %}
+{% include '_leaflet.html' %}
+  <style>
+    .pc-lede { max-width: 52rem; }
+    .pc-filters { margin-bottom: 1.25rem; }
+    .pc-card { margin-bottom: 1rem; }
+    .pc-card.is-confirmed { border-color: var(--bd-green); }
+    .pc-card h2 { font-size: 1.2rem; margin: 0; }
+    .pc-written { font-family: var(--bd-font-serif); }
+    .pc-badge-unmatched { background: var(--bd-ochre-soft); color: var(--bd-ochre); }
+    .pc-badge-matched { background: var(--bd-primary-soft); color: var(--bd-primary); }
+    .pc-badge-entry { background: var(--bd-info-soft); color: var(--bd-info); }
+    .pc-examples { margin: .5rem 0 0; padding-left: 1.1rem; }
+    .pc-examples li { margin-bottom: .2rem; }
+    .pc-quote { font-family: var(--bd-font-serif); }
+    .pc-current { margin: .5rem 0; }
+    .pc-book { color: var(--bd-ink-muted); }
+    .pc-others legend { font-weight: 400; font-size: .95rem; }
+    .pc-choices { border: 0; padding: 0; margin: .75rem 0 0; }
+    .pc-choices legend { font-size: 1rem; font-weight: 600; margin-bottom: .35rem; }
+    .pc-choices .form-check { margin-bottom: .2rem; }
+    .pc-search-results { list-style: none; padding: 0; margin: .35rem 0 0; max-height: 14rem; overflow: auto; }
+    .pc-status { margin-top: .5rem; }
+    .pc-status.is-error { color: var(--bd-danger); }
+    .pc-pager { display: flex; gap: .5rem; align-items: center; justify-content: center; margin: 1.5rem 0; }
+    .pc-map { height: 15rem; border: 1px solid var(--bd-rule); border-radius: .375rem; margin-top: .75rem; }
+    .bd-map-label { background: rgba(255,255,255,.85); border: 0; box-shadow: none; padding: 0 .25rem; font-size: .75rem; color: #1e2a27; }
+    .bd-map-label::before { display: none; }
+    .pc-map-legend { color: var(--bd-ink-muted); margin: .25rem 0 0; }
+    .pc-dot { display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; border: 2px solid; vertical-align: -.05rem; }
+    .pc-dot-guess { background: #8a5a0b; border-color: #8a5a0b; }
+    .pc-dot-match { background: #1f5f57; border-color: #1f5f57; }
+    .pc-dot-confirmed { background: #2c6e45; border-color: #2c6e45; }
+    .pc-dot-nearest { background: #e9ecea; border-color: #56625f; }
+    .pc-card :focus-visible, .pc-pager :focus-visible { outline: 3px solid var(--bd-primary); outline-offset: 2px; }
+  </style>
+</head>
+<body class="bd-standalone">
+{% set page_kind = 'Confirm places' %}
+{% include '_page_bar.html' %}
+
+<main class="container bd-page">
+  <h1>Confirm places</h1>
+  <p class="text-muted pc-lede">Places Claude read in the books, one card per place and book (the same name in two books can be two villages).
+    Check it against the scan and say where it is. It is confirmed for that book when two people give the same answer{% if role == 'admin' %}, or when an admin (you) decides{% else %}, or when an admin decides{% endif %};
+    then it is linked to that book. You can change your answer later.</p>
+
+  <form id="filters" class="row g-2 align-items-end pc-filters" aria-label="Filter places">
+    <div class="col-sm-6 col-lg-3">
+      <label for="f-group" class="form-label">Group</label>
+      <select id="f-group" name="group" class="form-select">
+        <option value="">All</option>
+        <option value="unmatched" selected>Not matched (rough position)</option>
+        <option value="matched">Matched automatically</option>
+        <option value="entry">Places in register entries</option>
+      </select>
+    </div>
+    <div class="col-sm-6 col-lg-2">
+      <label for="f-source" class="form-label">Source</label>
+      <select id="f-source" name="source" class="form-select">
+        <option value="">Both</option>
+        <option value="read_books">Place reading</option>
+        <option value="transcribe_books">Transcriptions</option>
+      </select>
+    </div>
+    <div class="col-sm-8 col-lg-5">
+      <label for="f-book" class="form-label">Book</label>
+      <select id="f-book" name="book" class="form-select">
+        <option value="">All books</option>
+        {% for b in books %}<option value="{{ b.document_id }}">{{ b.title }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-sm-4 col-lg-2">
+      <label for="f-state" class="form-label">Show</label>
+      <select id="f-state" name="state" class="form-select">
+        <option value="open" selected>Not confirmed</option>
+        <option value="pending">Waiting for a 2nd answer</option>
+        <option value="confirmed">Confirmed</option>
+        <option value="all">All</option>
+      </select>
+    </div>
+  </form>
+
+  <h2 id="list-heading" class="h5" tabindex="-1" aria-live="polite">Loading…</h2>
+  <div id="cards" data-page-size="{{ page_size }}" data-role="{{ role }}"></div>
+  <nav class="pc-pager" aria-label="Pages">
+    <button type="button" class="btn btn-outline-secondary" id="prev">Previous</button>
+    <span id="page-info" class="text-muted"></span>
+    <button type="button" class="btn btn-outline-secondary" id="next">Next</button>
+  </nav>
+</main>
+
+<script src="{{ url_for('static', filename='js/place_confirm.js') }}"></script>
+</body>
+</html>

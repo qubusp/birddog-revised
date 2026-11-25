@@ -14,6 +14,11 @@ Postgres, with read-only access to the `birddog` database.
   `~/birddog-revised`). The admin is not a sign-up: the password always comes
   from `.env` (change it there, then `docker compose up -d --no-deps jupyterhub`).
   Nobody can claim the admin name by signing up.
+- **Birddog users:** sign in with their Birddog email and password. The hub
+  checks them against birddog-web's `/login` (`BIRDDOG_LOGIN_URL`), and Birddog
+  admins are hub admins. Nothing to approve; removing someone from Birddog
+  locks them out here too. If birddog-web is down, these logins fail and the
+  native accounts below still work.
 - **Everyone else:** sign up at `/hub/signup` (username + password, min. 10
   characters). New accounts can't log in until the admin approves them at
   `/hub/authorize` (also linked as "Authorize Users" from the admin's home

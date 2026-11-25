@@ -8,6 +8,7 @@ locally `127.0.0.1:8085` (tunnel: `ssh -N -L 8085:127.0.0.1:8085 administrator@1
 |---|---|
 | Services | `marmot-db-init` (one-shot: role and database `marmot` in `apps-postgres`), `marmot` (`ghcr.io/marmotdata/marmot:0.14.0`, 512m), both in `docker-compose.appsbox.yml` |
 | Secrets | `MARMOT_DB_PASSWORD`, `MARMOT_ENCRYPTION_KEY` in the apps box's `deploy/.env`, made by `sh/deploy-apps`. **Never rotate `MARMOT_ENCRYPTION_KEY`**: stored pipeline credentials are encrypted with it. |
+| MCP | `https://catalog.<PUBLIC_DOMAIN>/api/v1/mcp`. Local clients (Claude Code) use an API key header. Hosted clients (the claude.ai connector) sign in with OAuth and register themselves, which Marmot allows only for hosts in `MARMOT_AUTH_DCR_ALLOWED_REDIRECT_HOSTS` (set to `claude.ai` in the compose file). Users revoke clients under **Account → Connected apps**. |
 | Login | Marmot's own users. The first start creates `admin` / `admin` and forces a password change; it was changed on 2026-11-24 (LOGINS.md). On a new box, change it over the tunnel before the Caddy route is reachable. |
 
 ## What feeds it
@@ -18,12 +19,25 @@ locally `127.0.0.1:8085` (tunnel: `ssh -N -L 8085:127.0.0.1:8085 administrator@1
   data box's `.env`). Catalogs `raw`, `core` and `views`: tables, columns, foreign
   keys. It cannot read `app`. Its own role because the plugin reads every
   database's size, which needs `pg_read_all_stats`.
-- **Airflow**: Marmot's Airflow plugin speaks only the Airflow 2 API (`/api/v1`),
-  so it does not work with our Airflow 3. Lineage comes from Airflow's OpenLineage
-  provider instead (already in the image), posting to
+- **Airflow connector** (Marmot schedule `airflow`, hourly): Marmot's Airflow
+  plugin speaks only the Airflow 2 API (`/api/v1`), which Airflow 3 removed, so it
+  points at `http://birddog-web:8000/airflow-v1`. That is `birddog/airflow_v1.py`
+  in the web app, which answers the plugin's calls from Airflow 3's `/api/v2`
+  (internal host only). Login: the read-only Airflow user `marmot` (Viewer). It
+  brings in every DAG, its tasks and 7 days of runs, and links DAGs to the
+  Postgres tables they write and read (Airflow assets such as
+  `postgres://postgres:5432/birddog/core/document`).
+- **Airflow OpenLineage**: runs also reach Marmot as OpenLineage events from
+  Airflow's provider (already in the image), posting to
   `https://catalog.<PUBLIC_DOMAIN>/api/v1/lineage` with a Marmot API key (the data
-  box reaches the apps box's Marmot only through Caddy). Turning that on means new `.env` keys on the data box and
-  recreating the `airflow-*` services, which needs the owner's OK (operations.md).
+  box reaches the apps box's Marmot only through Caddy). Settings:
+  `AIRFLOW__OPENLINEAGE__NAMESPACE` and `AIRFLOW__OPENLINEAGE__TRANSPORT` in the
+  data box's `.env` (format in `.env.example`). The key belongs to the Marmot
+  service account `airflow`, whose only role is `lineage-writer` (`assets:view`,
+  `assets:manage`); the built-in `user` role cannot write lineage. The settings
+  reach Airflow only when the `airflow-*` services are recreated (owner's OK).
+  Our tasks use psycopg2 directly, not Airflow hooks, so OpenLineage sees job
+  runs and the Assets a DAG declares, not table-level SQL lineage.
 
 ## Operations
 

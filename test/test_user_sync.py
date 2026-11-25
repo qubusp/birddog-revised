@@ -1,0 +1,186 @@
+from unittest.mock import MagicMock, patch
+
+import bcrypt
+import pytest
+
+from birddog import user_sync
+from birddog.user_sync import Account, Airflow, Saltcorn, SyncError
+
+ADA = Account("ada@example.org", "Ada Lovelace", "user")
+
+
+class FakeTool:
+    def __init__(self, key, fail=False):
+        self.key = key
+        self.fail = fail
+        self.calls = []
+
+    def upsert(self, account, password):
+        self.calls.append((account.email, password))
+        if self.fail:
+            raise SyncError(f"{self.key} is down")
+        return "updated"
+
+
+@pytest.fixture
+def store(monkeypatch):
+    """app.user_sync in memory: {(email, tool): (state, version)}."""
+    rows = {}
+    monkeypatch.setattr(user_sync, "_load", lambda email: (
+        ADA, "v2", {tool: value for (e, tool), value in rows.items() if e == email}))
+    monkeypatch.setattr(user_sync, "_record", lambda email, tool, state, detail, version:
+                        rows.__setitem__((email, tool), (state, version or rows.get((email, tool), (None, None))[1])))
+    monkeypatch.setattr("birddog.pg.enabled", lambda: True)
+    return rows
+
+
+def test_login_resyncs_only_tools_that_are_behind(store):
+    store[(ADA.email, "airflow")] = ("ok", "v2")      # current
+    store[(ADA.email, "mathesar")] = ("ok", "v1")     # old password
+    store[(ADA.email, "marmot")] = ("error", "v2")    # failed last time
+    tools = [FakeTool("airflow"), FakeTool("mathesar"), FakeTool("marmot"), FakeTool("saltcorn")]
+    results = user_sync.sync_account(ADA.email, "pw-123456", only_behind=True, tools=tools)
+    assert set(results) == {"mathesar", "marmot", "saltcorn"}
+    assert tools[0].calls == []
+    assert store[(ADA.email, "mathesar")] == ("ok", "v2")
+
+
+def test_one_failing_tool_does_not_stop_the_others(store):
+    tools = [FakeTool("airflow", fail=True), FakeTool("saltcorn")]
+    results = user_sync.sync_account(ADA.email, "pw-123456", tools=tools)
+    assert results["airflow"][0] == "error"
+    assert results["saltcorn"] == ("ok", "updated")
+    assert store[(ADA.email, "airflow")][0] == "error"
+
+
+def test_without_password_the_version_is_kept(store):
+    store[(ADA.email, "saltcorn")] = ("ok", "v1")
+    user_sync.sync_account(ADA.email, None, tools=[FakeTool("saltcorn")])
+    assert store[(ADA.email, "saltcorn")] == ("ok", "v1")
+
+
+def test_nothing_configured_does_nothing(monkeypatch):
+    monkeypatch.setattr(user_sync, "configured_tools", lambda env=None: [])
+    assert user_sync.sync_account(ADA.email, "x") == {}
+    assert user_sync.sync_in_background(ADA.email, "x") is None
+
+
+def test_configured_tools_follow_settings():
+    env = {"BIRDDOG_SYNC_SALTCORN_DB_URL": "postgresql://x", "BIRDDOG_SYNC_MARMOT_URL": "http://m"}
+    assert [t.key for t in user_sync.configured_tools(env)] == ["saltcorn"]
+
+
+def test_saltcorn_hash_is_bcryptjs_compatible():
+    digest = Saltcorn.hash_password("correct horse")
+    assert digest.startswith("$2a$10$")
+    assert bcrypt.checkpw(b"correct horse", ("$2b$" + digest[4:]).encode())
+
+
+def test_first_last_name():
+    assert ADA.first_last == ("Ada", "Lovelace")
+    assert Account("bo@x.org", "", "user").first_last == ("bo", "-")
+
+
+def _response(status, body=None):
+    resp = MagicMock(status_code=status, text="")
+    resp.json.return_value = body or {}
+    return resp
+
+
+def test_airflow_creates_missing_user_with_email_as_username():
+    session = MagicMock()
+    session.post.side_effect = [_response(201, {"access_token": "t"}), _response(200)]
+    session.get.return_value = _response(404)
+    tool = Airflow({"AIRFLOW_API_URL": "http://af:8080", "BIRDDOG_SYNC_AIRFLOW_USER": "sync",
+                    "BIRDDOG_SYNC_AIRFLOW_PASSWORD": "s"})
+    with patch("birddog.user_sync.requests.Session", return_value=session):
+        assert tool.upsert(ADA, "pw-123456") == "created"
+    assert session.get.call_args[0][0] == "http://af:8080/auth/fab/v1/users/ada%40example.org"
+    body = session.post.call_args_list[1].kwargs["json"]
+    assert body["username"] == ADA.email and body["roles"] == [{"name": "User"}]
+    assert body["password"] == "pw-123456"
+
+
+def test_airflow_role_change_without_password_patches_roles_only():
+    session = MagicMock()
+    session.post.return_value = _response(201, {"access_token": "t"})
+    session.get.return_value = _response(200)
+    session.patch.return_value = _response(200)
+    tool = Airflow({"AIRFLOW_API_URL": "http://af:8080", "BIRDDOG_SYNC_AIRFLOW_USER": "sync",
+                    "BIRDDOG_SYNC_AIRFLOW_PASSWORD": "s"})
+    with patch("birddog.user_sync.requests.Session", return_value=session):
+        tool.upsert(Account(ADA.email, ADA.name, "admin"), None)
+    kwargs = session.patch.call_args.kwargs
+    assert "password" not in kwargs["params"]["update_mask"]
+    assert kwargs["json"]["roles"] == [{"name": "Admin"}]
+
+
+def test_airflow_does_not_create_without_password():
+    session = MagicMock()
+    session.post.return_value = _response(201, {"access_token": "t"})
+    session.get.return_value = _response(404)
+    tool = Airflow({"AIRFLOW_API_URL": "http://af", "BIRDDOG_SYNC_AIRFLOW_USER": "s",
+                    "BIRDDOG_SYNC_AIRFLOW_PASSWORD": "s"})
+    with patch("birddog.user_sync.requests.Session", return_value=session):
+        assert "next login" in tool.upsert(ADA, None)
+    assert session.post.call_count == 1   # the token only
+
+
+def test_tooljet_new_user_is_invited_then_set_up_with_tokens(monkeypatch):
+    from birddog.user_sync import ToolJet
+    tool = ToolJet({"BIRDDOG_SYNC_TOOLJET_URL": "https://tj", "BIRDDOG_SYNC_TOOLJET_EMAIL": "sync@x.invalid",
+                    "BIRDDOG_SYNC_TOOLJET_PASSWORD": "s", "BIRDDOG_SYNC_TOOLJET_DB_URL": "postgresql://x"})
+    passwords = []
+    monkeypatch.setattr(tool, "_set_password", lambda email, pw: passwords.append((email, pw)))
+    invited = {"id": "ou1", "email": ADA.email, "status": "invited", "role": "end-user",
+               "account_setup_token": "setup-tok", "invitation_token": "org-tok"}
+    session = MagicMock()
+    session.post.return_value = _response(201, {"current_organization_id": "org"})
+    session.get.side_effect = [_response(200, {"users": []}), _response(200, {"users": [invited]})]
+    session.headers = {}
+    with patch("birddog.user_sync.requests.Session", return_value=session):
+        assert tool.upsert(ADA, "pw-123456") == "created"
+    # one Session object stands in for both the admin's and the invitee's
+    urls = [c.args[0] for c in session.post.call_args_list]
+    assert urls == ["https://tj/api/authenticate", "https://tj/api/organization-users",
+                    "https://tj/api/onboarding/setup-account-from-token"]
+    assert session.post.call_args_list[1].kwargs["json"]["role"] == "end-user"
+    setup = session.post.call_args_list[2].kwargs["json"]
+    assert (setup["token"], setup["organizationToken"], setup["password"]) == ("setup-tok", "org-tok", "pw-123456")
+    assert passwords == [(ADA.email, "pw-123456")]
+
+
+def test_grafana_creates_viewer_and_admin_roles():
+    from birddog.user_sync import Grafana
+    tool = Grafana({"BIRDDOG_SYNC_GRAFANA_URL": "http://g:3000", "GRAFANA_ADMIN_PASSWORD": "s"})
+    session = MagicMock()
+    session.get.return_value = _response(404)
+    session.post.return_value = _response(200, {"id": 7})
+    session.patch.return_value = _response(200)
+    session.put.return_value = _response(200)
+    with patch("birddog.user_sync.requests.Session", return_value=session):
+        assert tool.upsert(ADA, "pw-123456") == "created"
+    assert session.put.call_args.kwargs["json"] == {"isGrafanaAdmin": False}
+    assert session.post.call_args.kwargs["json"]["login"] == ADA.email
+    assert session.patch.call_args.args[0] == "http://g:3000/api/org/users/7"
+    assert session.patch.call_args.kwargs["json"] == {"role": "Viewer"}
+
+
+def test_tooljet_invite_steps_use_a_separate_session(monkeypatch):
+    from birddog.user_sync import ToolJet
+    tool = ToolJet({"BIRDDOG_SYNC_TOOLJET_URL": "https://tj", "BIRDDOG_SYNC_TOOLJET_EMAIL": "sync@x.invalid",
+                    "BIRDDOG_SYNC_TOOLJET_PASSWORD": "s", "BIRDDOG_SYNC_TOOLJET_DB_URL": "postgresql://x"})
+    monkeypatch.setattr(tool, "_set_password", lambda *a: None)
+    archived = {"id": "ou1", "email": ADA.email, "status": "archived", "first_name": "Ada",
+                "role_group": [{"name": "end-user"}]}
+    invited = {**archived, "status": "invited", "invitation_token": "org-tok"}
+    admin, invitee = MagicMock(), MagicMock()
+    admin.headers = {}
+    admin.post.return_value = _response(201, {"current_organization_id": "org"})
+    admin.get.side_effect = [_response(200, {"users": [archived]}), _response(200, {"users": [invited]})]
+    admin.put.return_value = _response(200)
+    invitee.post.return_value = _response(201)
+    with patch("birddog.user_sync.requests.Session", side_effect=[admin, invitee]):
+        tool.upsert(Account(ADA.email, ADA.name, "admin"), "pw-123456")
+    assert invitee.post.call_args.args[0] == "https://tj/api/onboarding/accept-invite"
+    assert admin.put.call_args.kwargs["json"]["role"] == "admin"          # still the admin's session

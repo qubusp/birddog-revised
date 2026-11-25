@@ -196,6 +196,8 @@ services:
       JUPYTERHUB_ADMIN_USER: ${JUPYTERHUB_ADMIN_USER:-admin}
       JUPYTERHUB_ADMIN_PASSWORD: ${JUPYTERHUB_ADMIN_PASSWORD}
       JUPYTER_DB_PASSWORD: ${JUPYTER_DB_PASSWORD}
+      # Birddog accounts sign in with their Birddog email and password
+      BIRDDOG_LOGIN_URL: http://birddog-web:8000/login
       JUPYTER_SINGLEUSER_IMAGE: birddog-jupyter-singleuser:local
       # compose's default network for project "deploy"
       DOCKER_NETWORK_NAME: deploy_default
@@ -320,9 +322,25 @@ services:
       BIRDDOG_SECRET_KEY: ${BIRDDOG_SECRET_KEY}
       # invite only: accounts via `python -m birddog.user_admin add` (open = public signup)
       BIRDDOG_SIGNUP: ${BIRDDOG_SIGNUP:-closed}
+      # Genizah (genizah.<PUBLIC_DOMAIN>) builds its tool links from these
+      GENIZAH_DOMAIN: ${PUBLIC_DOMAIN}
+      GENIZAH_AIRFLOW_DOMAIN: ${PUBLIC_DOMAIN}
       AIRFLOW_API_URL: http://airflow-apiserver:8080
       AIRFLOW_API_USER: ${AIRFLOW_API_USER:-birddog-web}
       AIRFLOW_API_PASSWORD: ${AIRFLOW_API_PASSWORD}
+      # copy Birddog accounts into the other tools (birddog/user_sync.py); a
+      # tool whose settings are empty is skipped
+      BIRDDOG_SYNC_AIRFLOW_USER: ${BIRDDOG_SYNC_AIRFLOW_USER:-birddog-sync}
+      BIRDDOG_SYNC_AIRFLOW_PASSWORD: ${BIRDDOG_SYNC_AIRFLOW_PASSWORD:-}
+      BIRDDOG_SYNC_MATHESAR_URL: https://data.${PUBLIC_DOMAIN}
+      MATHESAR_ADMIN_USER: ${MATHESAR_ADMIN_USER:-admin}
+      MATHESAR_ADMIN_PASSWORD: ${MATHESAR_ADMIN_PASSWORD:-}
+      BIRDDOG_SYNC_SALTCORN_DB_URL: postgresql://saltcorn:${SALTCORN_DB_PASSWORD}@postgres:5432/saltcorn
+      # ToolJet: public URL (its auth cookie is HTTPS-only), admin birddog-sync
+      BIRDDOG_SYNC_TOOLJET_URL: https://apps.${PUBLIC_DOMAIN}
+      BIRDDOG_SYNC_TOOLJET_EMAIL: ${BIRDDOG_SYNC_TOOLJET_EMAIL:-}
+      BIRDDOG_SYNC_TOOLJET_PASSWORD: ${BIRDDOG_SYNC_TOOLJET_PASSWORD:-}
+      BIRDDOG_SYNC_TOOLJET_DB_URL: postgresql://tooljet:${TOOLJET_DB_PASSWORD}@postgres:5432/tooljet
       # password-reset mail (optional)
       BIRDDOG_SMTP_SERVER: ${BIRDDOG_SMTP_SERVER:-}
       BIRDDOG_SMTP_PORT: ${BIRDDOG_SMTP_PORT:-}

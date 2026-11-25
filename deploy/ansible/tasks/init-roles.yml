@@ -1,0 +1,25 @@
+# Re-runs the role scripts as postgres (init_roles in sh/deploy-data): creates
+# missing roles, re-syncs their passwords from .env. Each script is streamed
+# from this checkout (the server's copy is synced only later); the password is
+# read from .env on the server and passed in the exec environment, so it never
+# reaches the controller. no_log: psql can echo a failing statement, and these
+# statements hold passwords.
+
+- name: Roles | would run the role scripts
+  ansible.builtin.set_fact:
+    report: "{{ report + ['roles: would run db/init/' ~ (role_scripts | map(attribute='file') | join(', '))] }}"
+  when: ansible_check_mode
+
+# include_tasks in a loop stops at the first failing script, as set -e does
+- name: Roles | run each script
+  ansible.builtin.include_tasks: role-script.yml
+  loop: "{{ role_scripts }}"
+  loop_control:
+    loop_var: role
+    label: "{{ role.file }}"
+  when: not ansible_check_mode
+
+- name: Roles | report
+  ansible.builtin.set_fact:
+    report: "{{ report + ['roles: ran db/init/' ~ (role_scripts | map(attribute='file') | join(', '))] }}"
+  when: not ansible_check_mode

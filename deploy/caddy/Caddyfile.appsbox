@@ -31,8 +31,17 @@ birddog.{$PUBLIC_DOMAIN} {
 	encode zstd gzip
 	reverse_proxy birddog-web:8000
 }
+# Genizah, the entry page for every tool (birddog/genizah.py), served by birddog-web
+genizah.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy birddog-web:8000
+}
 
 # Marmot data catalog (deploy/marmot/README.md)
+grafana.{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy grafana:3000
+}
 catalog.{$PUBLIC_DOMAIN} {
 	encode zstd gzip
 	reverse_proxy marmot:8080

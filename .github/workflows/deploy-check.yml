@@ -1,0 +1,47 @@
+# Dry run of the deploy on every push to day0-stack, so each push shows what
+# a deploy would do (keys to add, migrations to run, rsync change list,
+# drift). Check mode only: nothing on the servers changes. The real deploy is
+# .github/workflows/deploy.yml (manual).
+name: Deploy check
+
+on:
+  push:
+    branches: [day0-stack]
+
+permissions:
+  contents: read
+
+# read only, so it does not queue behind (or cancel) a real deploy; a newer
+# push replaces an older check
+concurrency:
+  group: deploy-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dry-run:
+    name: dry-run ${{ matrix.box }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        box: [data, apps]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/ansible-setup
+        with:
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+      - name: ansible-playbook deploy-${{ matrix.box }}.yml --check --diff
+        working-directory: deploy/ansible
+        env:
+          DATA_BOX_HOST: ${{ vars.DATA_BOX_HOST }}
+          APPS_BOX_HOST: ${{ vars.APPS_BOX_HOST }}
+          BOX: ${{ matrix.box }}
+          ANSIBLE_FORCE_COLOR: "1"
+        run: |
+          echo "## ${BOX^} box: dry run of \`${GITHUB_SHA::12}\` ($GITHUB_REF_NAME)" >> "$GITHUB_STEP_SUMMARY"
+          ansible-playbook "deploy-$BOX.yml" --check --diff -e summary_file="$GITHUB_STEP_SUMMARY"
