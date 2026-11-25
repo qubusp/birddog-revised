@@ -8,10 +8,11 @@ JupyterHub). Grafana's own state (users, preferences) is SQLite in the
 
 | Dashboard | File | Shows |
 |---|---|---|
-| Archive map (home) | `dashboards/archive-map.json` | Every location on an OpenStreetMap, sized by how often the books name it, with region, 1900 district/province and the Jewish population note |
+| Archive map (home) | `dashboards/archive-map.json` | Every location as a slate dot on a light grey map, with the places the books name on top, sized and coloured by mentions, with region, 1900 district/province and the Jewish population note |
 | Books map | `dashboards/books-map.json` | Places read in the books (`read_books`) and matched to a location; most-named places; unmatched places |
 | Collection overview | `dashboards/collection.json` | Pages, documents, scan pages, translations, FTP matching, documents per archive, work queues |
 | Book reading: progress and costs | `dashboards/books-costs.json` | Books by status, dollars and tokens per book, model and day |
+| Book transcriptions | `dashboards/transcriptions.json` | Search box over the transcripts (`core.search_books`), register entries by event and year, people per place on the map, progress and cost per book (views from migration 023) |
 
 The data behind the maps comes from migration 021: `core.location` gets
 `latitude`, `longitude`, `region` and `jewish_population` from the NocoDB raw
@@ -19,6 +20,9 @@ records, and the views `views.map__locations`, `views.map__book_places` and
 `views.stats__books`. `core.document_location` is still empty, so the
 "documents" counts on the archive map stay 0 until documents are linked to
 places.
+
+**Maps** use Esri's World Light Gray Canvas tiles (no API key; CARTO now needs
+one) and the theme's accents, ochre to stamp red; keep green off the maps.
 
 **Making dashboards.** `make_dashboards.py` writes the JSON files; edit it and
 rerun it rather than hand-editing JSON, so panels stay consistent.

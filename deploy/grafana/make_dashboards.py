@@ -69,32 +69,63 @@ def timeseries(pid, title, sql, x, y, w, h, bars_style=True):
                             "overrides": []}}
 
 
-def geomap(pid, title, sql, x, y, w, h, size_field, color_field=None, layer_name="Places"):
-    color = ({"field": color_field, "fixed": "#1f5f57"} if color_field
-             else {"fixed": "#1f5f57"})
+# Maps: a quiet grey basemap (Esri World Light Gray Canvas, no API key; CARTO
+# now needs one) so the data carries the colour. Esri's place-name layer sits
+# above the base and below the data. Background points are small slate dots;
+# highlighted points are sized by a value and coloured in the theme's accents,
+# ochre -> burnt orange -> stamp red (no green: it fights the map).
+ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/{}/MapServer/tile/{{z}}/{{y}}/{{x}}"
+ESRI_CREDIT = "Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors"
+BASEMAP = {"type": "xyz", "name": "Light grey",
+           "config": {"url": ESRI.format("World_Light_Gray_Base"), "attribution": ESRI_CREDIT}}
+LABELS = {"type": "xyz", "name": "Place names", "tooltip": False,
+          "config": {"url": ESRI.format("World_Light_Gray_Reference"), "attribution": ESRI_CREDIT}}
+SLATE = "#1d4e5f"
+HEAT_STEPS = [{"color": "#d4a017", "value": None},   # ochre
+              {"color": "#d9622b", "value": 10},     # burnt orange
+              {"color": "#a3312a", "value": 50}]     # stamp red
+
+
+def marker_layer(name, ref, size_field=None, color_field=None, legend=False, fixed_size=3,
+                 fixed_color=SLATE, opacity=0.75):
+    size = ({"field": size_field, "fixed": fixed_size, "min": 5, "max": 26} if size_field
+            else {"fixed": fixed_size})
+    color = {"field": color_field, "fixed": fixed_color} if color_field else {"fixed": fixed_color}
+    return {"type": "markers", "name": name, "tooltip": True,
+            "filterData": {"id": "byRefId", "options": ref},
+            "location": {"mode": "coords", "latitude": "latitude", "longitude": "longitude"},
+            "config": {"showLegend": legend, "style": {
+                "size": size, "color": color, "opacity": opacity,
+                "symbol": {"mode": "fixed", "fixed": "img/icons/marker/circle.svg"}}}}
+
+
+def geomap(pid, title, queries, layers, x, y, w, h):
+    """queries: [(refId, sql)]; layers: marker_layer(...) dicts, bottom first."""
     return {"id": pid, "type": "geomap", "title": title, "datasource": DS,
-            "gridPos": {"x": x, "y": y, "w": w, "h": h}, "targets": [target(sql)],
+            "gridPos": {"x": x, "y": y, "w": w, "h": h},
+            "targets": [target(sql, ref=ref) for ref, sql in queries],
             "options": {
                 "view": UKRAINE_VIEW,
                 "controls": {"showZoom": True, "mouseWheelZoom": True, "showAttribution": True,
                              "showScale": True},
                 "tooltip": {"mode": "details"},
-                "basemap": {"type": "osm-standard", "name": "OpenStreetMap"},
-                "layers": [{
-                    "type": "markers", "name": layer_name, "tooltip": True,
-                    "location": {"mode": "coords", "latitude": "latitude", "longitude": "longitude"},
-                    "config": {"showLegend": True, "style": {
-                        "size": {"field": size_field, "fixed": 4, "min": 3, "max": 22},
-                        "color": color, "opacity": 0.7,
-                        "symbol": {"mode": "fixed", "fixed": "img/icons/marker/circle.svg"}}}}]},
-            "fieldConfig": {"defaults": {"color": {"mode": "continuous-GrYlRd"}}, "overrides": []}}
+                "basemap": BASEMAP,
+                "layers": [LABELS] + layers},
+            "fieldConfig": {"defaults": {"color": {"mode": "thresholds"},
+                                         "thresholds": {"mode": "absolute", "steps": HEAT_STEPS}},
+                            "overrides": []}}
 
 
-def dashboard(uid, title, description, panels, time_from="now-30d", tags=("birddog",)):
+def textbox(name, label, default=""):
+    return {"type": "textbox", "name": name, "label": label, "query": default,
+            "current": {"text": default, "value": default}, "options": [], "hide": 0}
+
+
+def dashboard(uid, title, description, panels, time_from="now-30d", tags=("birddog",), variables=()):
     return {"uid": uid, "title": title, "description": description, "tags": list(tags),
             "editable": True, "graphTooltip": 1, "schemaVersion": 41, "version": 1,
             "time": {"from": time_from, "to": "now"}, "timezone": "utc", "refresh": "",
-            "panels": panels, "templating": {"list": []}, "annotations": {"list": []},
+            "panels": panels, "templating": {"list": list(variables)}, "annotations": {"list": []},
             "links": [{"title": "Other dashboards", "type": "dashboards", "tags": ["birddog"],
                        "asDropdown": True}]}
 
@@ -108,12 +139,21 @@ archive = dashboard("archive-map", "Archive map",
         stat(2, "Named in books", "SELECT count(*) FROM views.map__locations WHERE books > 0", 4, 0),
         stat(3, "Regions", "SELECT count(DISTINCT region) FROM views.map__locations", 8, 0),
         stat(4, "Linked documents", "SELECT coalesce(sum(documents), 0) FROM views.map__locations", 12, 0),
-        geomap(5, "Locations (size: mentions in books)", """
+        geomap(5, "Locations (dots: every community; circles: named in the books, size and colour by mentions)",
+               [("A", """
 SELECT name, region, c1900_province AS "province (1900)", c1900_district AS "district (1900)",
        jewish_population AS "Jewish population", alternate_names AS "other names",
-       books, book_mentions, documents, latitude, longitude
-FROM views.map__locations
-ORDER BY book_mentions""", 0, 4, 16, 18, size_field="book_mentions", color_field="book_mentions"),
+       documents, latitude, longitude
+FROM views.map__locations WHERE books = 0"""),
+                ("B", """
+SELECT name, region, c1900_province AS "province (1900)", c1900_district AS "district (1900)",
+       jewish_population AS "Jewish population", books, book_mentions AS "mentions in books",
+       documents, latitude, longitude
+FROM views.map__locations WHERE books > 0 ORDER BY book_mentions""")],
+               [marker_layer("Communities", "A", opacity=0.45),
+                marker_layer("Named in books", "B", size_field="mentions in books",
+                             color_field="mentions in books", legend=True, opacity=0.85)],
+               0, 4, 16, 18),
         bars(6, "Locations per region", """
 SELECT coalesce(region, '(none)') AS region, count(*) AS locations
 FROM views.map__locations GROUP BY 1 ORDER BY 2 DESC""", 16, 0, 8, 22),
@@ -136,11 +176,14 @@ books_map = dashboard("books-map", "Books map",
         stat(6, "Match rate", """
 SELECT round(100.0 * (SELECT count(*) FROM views.map__book_places)
        / nullif((SELECT count(*) FROM views.books__places), 0), 1)""", 20, 0, unit="percent", decimals=1),
-        geomap(7, "Places named in books (size: mentions)", """
+        geomap(7, "Places named in books (size and colour: mentions)",
+               [("A", """
 SELECT location AS place, name_uk AS "as read", region, book, mentions, pages, kinds,
        admin_context AS "context in book", latitude, longitude
-FROM views.map__book_places ORDER BY mentions""", 0, 4, 16, 18, size_field="mentions", color_field="mentions",
-               layer_name="Book places"),
+FROM views.map__book_places ORDER BY mentions""")],
+               [marker_layer("Book places", "A", size_field="mentions", color_field="mentions",
+                             legend=True, opacity=0.85)],
+               0, 4, 16, 18),
         bars(8, "Most named places", """
 SELECT location AS place, sum(mentions) AS mentions
 FROM views.map__book_places GROUP BY 1 ORDER BY 2 DESC LIMIT 25""", 16, 4, 8, 18),
@@ -222,7 +265,53 @@ SELECT title, status, page_count AS pages, pages_read, places, round(cost_usd::n
 FROM views.stats__books ORDER BY updated_at DESC""", 0, 13, 24, 12),
     ])
 
+# --- Book transcriptions ------------------------------------------------------------
+# Views from migration 023 (birddog/books.py, transcribe_books DAG).
+transcriptions = dashboard("transcriptions", "Book transcriptions",
+    "Full transcriptions of the archive books: search the text, register entries by event and year, "
+    "people per place, and progress and cost per book. Names Claude could not read show as [...].",
+    [
+        table(1, "Search the transcripts (type in the box above: a name, place or word)", """
+SELECT s.snippet, b.title AS book, s.page_no AS page, round(s.rank::numeric, 3) AS rank, s.page_link
+FROM core.search_books(${q:sqlstring}, 100) s
+JOIN core.document b ON b.id = s.document_id
+ORDER BY s.rank DESC""", 0, 0, 24, 9, links={"page": "${__data.fields.page_link}"}),
+        stat(2, "Books transcribed", "SELECT count(*) FROM views.books__transcription_progress WHERE status = 'transcribed'", 0, 9),
+        stat(3, "Pages transcribed", "SELECT coalesce(sum(pages_transcribed), 0) FROM views.books__transcription_progress", 4, 9),
+        stat(4, "Register entries", "SELECT count(*) FROM views.books__entries", 8, 9),
+        stat(5, "People placed on the map", "SELECT count(DISTINCT entry_id) FROM views.books__entry_places WHERE latitude IS NOT NULL", 12, 9),
+        stat(6, "Spent on transcription", "SELECT coalesce(sum(cost_usd), 0) FROM views.books__transcription_progress", 16, 9,
+             unit="currencyUSD", decimals=2),
+        stat(7, "Cost per page", """
+SELECT coalesce(sum(cost_usd), 0) / nullif(sum(pages_transcribed), 0) FROM views.books__transcription_progress""",
+             20, 9, unit="currencyUSD", decimals=3),
+        geomap(8, "People per place (size and colour: register entries naming the place)",
+               [("A", """
+SELECT location_name AS place, count(DISTINCT entry_id) AS people,
+       string_agg(DISTINCT event, ', ') AS events, string_agg(DISTINCT title, ' | ') AS books,
+       min(year) AS "first year", max(year) AS "last year", avg(latitude) AS latitude, avg(longitude) AS longitude
+FROM views.books__entry_places WHERE latitude IS NOT NULL
+GROUP BY location_id, location_name ORDER BY people""")],
+               [marker_layer("Places", "A", size_field="people", color_field="people", legend=True, opacity=0.85)],
+               0, 13, 14, 16),
+        pie(9, "Entries by event", """
+SELECT coalesce(event, '(none)') AS event, count(*) AS entries FROM views.books__entries GROUP BY 1 ORDER BY 2 DESC""",
+            14, 13, 10, 8),
+        bars(10, "Entries by year (where the year is known)", """
+SELECT year::text AS year, count(*) AS entries FROM views.books__entries
+WHERE year IS NOT NULL GROUP BY year ORDER BY year""", 14, 21, 10, 8, horizontal=False),
+        table(11, "Register entries", """
+SELECT title AS book, page_no AS page, entry_no AS "#", event, date_text AS date, year, person, father, mother,
+       places, note, page_link
+FROM views.books__entries ORDER BY title, page_no, entry_no""", 0, 29, 24, 12, links={"page": "${__data.fields.page_link}"}),
+        table(12, "Progress and cost per book", """
+SELECT title, status, page_count AS pages, pages_transcribed AS transcribed, pages_reread AS "re-read (Opus)",
+       entries, round(cost_usd::numeric, 2) AS "cost $", round(cost_per_page::numeric, 3) AS "$ per page",
+       error, updated_at
+FROM views.books__transcription_progress ORDER BY updated_at DESC NULLS LAST""", 0, 41, 24, 10),
+    ], variables=[textbox("q", "Search")])
+
 for name, dash in (("archive-map", archive), ("books-map", books_map), ("collection", collection),
-                   ("books-costs", costs)):
+                   ("books-costs", costs), ("transcriptions", transcriptions)):
     (OUT / f"{name}.json").write_text(json.dumps(dash, indent=2, ensure_ascii=False) + "\n")
     print("wrote", name, len(dash["panels"]), "panels")

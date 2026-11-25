@@ -116,8 +116,12 @@ services:
     <<: *databox-hosts
     image: grafana/grafana-oss:13.0.2
     restart: unless-stopped
-    mem_limit: 512m
+    # 512m got OOM-killed (idles ~150 MB, spikes on start-up and dashboard loads)
+    mem_limit: 2g
     environment:
+      # don't update bundled plugins in the background: it fails on the
+      # read-only bundle and adds to the start-up spike
+      GF_PLUGINS_PREINSTALL_AUTO_UPDATE: "false"
       GF_SERVER_ROOT_URL: https://grafana.${PUBLIC_DOMAIN}
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}

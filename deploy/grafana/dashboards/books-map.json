@@ -296,7 +296,7 @@
     {
       "id": 7,
       "type": "geomap",
-      "title": "Places named in books (size: mentions)",
+      "title": "Places named in books (size and colour: mentions)",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "birddog"
@@ -337,14 +337,31 @@
           "mode": "details"
         },
         "basemap": {
-          "type": "osm-standard",
-          "name": "OpenStreetMap"
+          "type": "xyz",
+          "name": "Light grey",
+          "config": {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+            "attribution": "Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors"
+          }
         },
         "layers": [
+          {
+            "type": "xyz",
+            "name": "Place names",
+            "tooltip": false,
+            "config": {
+              "url": "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+              "attribution": "Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors"
+            }
+          },
           {
             "type": "markers",
             "name": "Book places",
             "tooltip": true,
+            "filterData": {
+              "id": "byRefId",
+              "options": "A"
+            },
             "location": {
               "mode": "coords",
               "latitude": "latitude",
@@ -355,15 +372,15 @@
               "style": {
                 "size": {
                   "field": "mentions",
-                  "fixed": 4,
-                  "min": 3,
-                  "max": 22
+                  "fixed": 3,
+                  "min": 5,
+                  "max": 26
                 },
                 "color": {
                   "field": "mentions",
-                  "fixed": "#1f5f57"
+                  "fixed": "#1d4e5f"
                 },
-                "opacity": 0.7,
+                "opacity": 0.85,
                 "symbol": {
                   "mode": "fixed",
                   "fixed": "img/icons/marker/circle.svg"
@@ -376,7 +393,24 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "continuous-GrYlRd"
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d4a017",
+                "value": null
+              },
+              {
+                "color": "#d9622b",
+                "value": 10
+              },
+              {
+                "color": "#a3312a",
+                "value": 50
+              }
+            ]
           }
         },
         "overrides": []

@@ -203,7 +203,7 @@
     {
       "id": 5,
       "type": "geomap",
-      "title": "Locations (size: mentions in books)",
+      "title": "Locations (dots: every community; circles: named in the books, size and colour by mentions)",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "birddog"
@@ -224,7 +224,18 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT name, region, c1900_province AS \"province (1900)\", c1900_district AS \"district (1900)\",\n       jewish_population AS \"Jewish population\", alternate_names AS \"other names\",\n       books, book_mentions, documents, latitude, longitude\nFROM views.map__locations\nORDER BY book_mentions"
+          "rawSql": "SELECT name, region, c1900_province AS \"province (1900)\", c1900_district AS \"district (1900)\",\n       jewish_population AS \"Jewish population\", alternate_names AS \"other names\",\n       documents, latitude, longitude\nFROM views.map__locations WHERE books = 0"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "birddog"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT name, region, c1900_province AS \"province (1900)\", c1900_district AS \"district (1900)\",\n       jewish_population AS \"Jewish population\", books, book_mentions AS \"mentions in books\",\n       documents, latitude, longitude\nFROM views.map__locations WHERE books > 0 ORDER BY book_mentions"
         }
       ],
       "options": {
@@ -244,14 +255,61 @@
           "mode": "details"
         },
         "basemap": {
-          "type": "osm-standard",
-          "name": "OpenStreetMap"
+          "type": "xyz",
+          "name": "Light grey",
+          "config": {
+            "url": "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+            "attribution": "Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors"
+          }
         },
         "layers": [
           {
+            "type": "xyz",
+            "name": "Place names",
+            "tooltip": false,
+            "config": {
+              "url": "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+              "attribution": "Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors"
+            }
+          },
+          {
             "type": "markers",
-            "name": "Places",
+            "name": "Communities",
             "tooltip": true,
+            "filterData": {
+              "id": "byRefId",
+              "options": "A"
+            },
+            "location": {
+              "mode": "coords",
+              "latitude": "latitude",
+              "longitude": "longitude"
+            },
+            "config": {
+              "showLegend": false,
+              "style": {
+                "size": {
+                  "fixed": 3
+                },
+                "color": {
+                  "fixed": "#1d4e5f"
+                },
+                "opacity": 0.45,
+                "symbol": {
+                  "mode": "fixed",
+                  "fixed": "img/icons/marker/circle.svg"
+                }
+              }
+            }
+          },
+          {
+            "type": "markers",
+            "name": "Named in books",
+            "tooltip": true,
+            "filterData": {
+              "id": "byRefId",
+              "options": "B"
+            },
             "location": {
               "mode": "coords",
               "latitude": "latitude",
@@ -261,16 +319,16 @@
               "showLegend": true,
               "style": {
                 "size": {
-                  "field": "book_mentions",
-                  "fixed": 4,
-                  "min": 3,
-                  "max": 22
+                  "field": "mentions in books",
+                  "fixed": 3,
+                  "min": 5,
+                  "max": 26
                 },
                 "color": {
-                  "field": "book_mentions",
-                  "fixed": "#1f5f57"
+                  "field": "mentions in books",
+                  "fixed": "#1d4e5f"
                 },
-                "opacity": 0.7,
+                "opacity": 0.85,
                 "symbol": {
                   "mode": "fixed",
                   "fixed": "img/icons/marker/circle.svg"
@@ -283,7 +341,24 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "continuous-GrYlRd"
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d4a017",
+                "value": null
+              },
+              {
+                "color": "#d9622b",
+                "value": 10
+              },
+              {
+                "color": "#a3312a",
+                "value": 50
+              }
+            ]
           }
         },
         "overrides": []
