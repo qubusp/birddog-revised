@@ -151,7 +151,13 @@
           if (!data.locations.length) results.append(el('li', {class: 'text-muted small', text: 'No match in the location table.'}));
           for (const loc of data.locations) {
             const where = [loc.district, loc.province].filter(Boolean).join(', ');
-            results.append(el('li', {}, choiceRadio(`${name}-pick`, 'location', `${loc.name}${where ? ' (' + where + ')' : ''}`, loc.location_id, false)));
+            const item = choiceRadio(`${name}-pick`, 'location', `${loc.name}${where ? ' (' + where + ')' : ''}`, loc.location_id, false);
+            const input = item.querySelector('input');   // its position, for the card map
+            if (loc.latitude !== null && loc.latitude !== undefined) {
+              input.dataset.lat = loc.latitude;
+              input.dataset.lon = loc.longitude;
+            }
+            results.append(el('li', {}, item));
           }
         } catch (err) {
           results.append(el('li', {class: 'text-danger small', text: err.message}));
@@ -173,6 +179,10 @@
       head, bookTitle, facts, current, examples, choices, others,
       el('label', {for: noteId, class: 'form-label small mt-2 mb-1', text: 'Note (optional)'}), note,
       save, status);
+    if (window.BirddogMap) {
+      const mapEl = window.BirddogMap.cardMap(p, form, name);
+      if (mapEl) current.after(mapEl);
+    }
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       let picked = form.querySelector(`input[name="${name}-pick"]:checked`);

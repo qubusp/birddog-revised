@@ -7,6 +7,7 @@
   <title>Confirm places - Birddog</title>
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
 {% include '_assets.html' %}
+{% include '_leaflet.html' %}
   <style>
     .pc-lede { max-width: 52rem; }
     .pc-filters { margin-bottom: 1.25rem; }
@@ -30,6 +31,15 @@
     .pc-status { margin-top: .5rem; }
     .pc-status.is-error { color: var(--bd-danger); }
     .pc-pager { display: flex; gap: .5rem; align-items: center; justify-content: center; margin: 1.5rem 0; }
+    .pc-map { height: 15rem; border: 1px solid var(--bd-rule); border-radius: .375rem; margin-top: .75rem; }
+    .bd-map-label { background: rgba(255,255,255,.85); border: 0; box-shadow: none; padding: 0 .25rem; font-size: .75rem; color: #1e2a27; }
+    .bd-map-label::before { display: none; }
+    .pc-map-legend { color: var(--bd-ink-muted); margin: .25rem 0 0; }
+    .pc-dot { display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; border: 2px solid; vertical-align: -.05rem; }
+    .pc-dot-guess { background: #8a5a0b; border-color: #8a5a0b; }
+    .pc-dot-match { background: #1f5f57; border-color: #1f5f57; }
+    .pc-dot-confirmed { background: #2c6e45; border-color: #2c6e45; }
+    .pc-dot-nearest { background: #e9ecea; border-color: #56625f; }
     .pc-card :focus-visible, .pc-pager :focus-visible { outline: 3px solid var(--bd-primary); outline-offset: 2px; }
   </style>
 </head>

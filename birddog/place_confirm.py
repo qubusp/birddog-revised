@@ -150,6 +150,31 @@ def plain(value):
     return value
 
 
+def location_ids(cards):
+    """core.location ids a page of cards shows (current match, confirmed answer,
+    nearest towns), for the card maps."""
+    ids = set()
+    for card in cards:
+        ids.update(i for i in (card.get("auto_location_id"), card.get("confirmed_location_id")) if i)
+        ids.update(n["location_id"] for n in card.get("nearest") or [] if n.get("location_id"))
+    return sorted(ids)
+
+
+def add_coordinates(cards, coords):
+    """Puts latitude/longitude from `coords` ({location_id: (lat, lon)}) on the
+    current match, the confirmed answer and each nearest town; the view leaves
+    them out and the card map needs them."""
+    def at(location_id):
+        lat, lon = coords.get(location_id) or (None, None)
+        return plain(lat), plain(lon)
+    for card in cards:
+        card["auto_latitude"], card["auto_longitude"] = at(card.get("auto_location_id"))
+        card["confirmed_latitude"], card["confirmed_longitude"] = at(card.get("confirmed_location_id"))
+        for n in card.get("nearest") or []:
+            n["latitude"], n["longitude"] = at(n.get("location_id"))
+    return cards
+
+
 # --- database ---------------------------------------------------------------------
 
 _CARD_COLUMNS = ("place_key", "document_id", "title", "place_group", "sources", "mentions", "as_written",
@@ -195,6 +220,13 @@ def list_places(f, email):
                            WHERE user_email = %s AND place_key = ANY(%s)
                            ORDER BY place_key, document_id, created_at DESC, id DESC""", (email, keys))
             mine = {(k, d): {"choice": c, "location_id": l, "note": n} for k, d, c, l, n in cur.fetchall()}
+        ids = location_ids(cards)
+        coords = {}
+        if ids:
+            cur.execute("SELECT location_id, latitude, longitude FROM core.location WHERE location_id = ANY(%s)",
+                        (ids,))
+            coords = {i: (lat, lon) for i, lat, lon in cur.fetchall()}
+        add_coordinates(cards, coords)
     for card in cards:
         card["mine"] = mine.get((card["place_key"], card["document_id"]))
     return {"places": cards, "total": total, "page": f["page"], "page_size": PAGE_SIZE}
